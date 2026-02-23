@@ -1,4 +1,4 @@
-# HSM Test Framework
+# E2E Test Framework
 
 Reusable, cross-platform E2E test framework for Windows desktop applications and console-based tools (PKCS#11 via Golang, Java, C++).
 
