@@ -1,0 +1,115 @@
+/**
+ * Consumer Repo - Jenkins Pipeline
+ *
+ * Reusable pipeline template. Copy to your test repo and adjust parameters.
+ * The framework is installed from GitLab as a pip dependency.
+ */
+
+pipeline {
+    agent none
+
+    parameters {
+        choice(
+            name: 'TEST_SUITE',
+            choices: ['smoke', 'regression', 'all', 'ui', 'console'],
+            description: 'Which test suite to run'
+        )
+        booleanParam(name: 'RUN_WINDOWS', defaultValue: true, description: 'Run Windows tests')
+        booleanParam(name: 'RUN_LINUX', defaultValue: true, description: 'Run Linux tests')
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    stages {
+        stage('Test') {
+            parallel {
+                stage('Windows') {
+                    when { expression { params.RUN_WINDOWS } }
+                    agent { label 'windows' }
+                    stages {
+                        stage('Win - Setup') {
+                            steps {
+                                bat '''
+                                    python -m venv venv
+                                    call venv\\Scripts\\activate.bat
+                                    pip install -r requirements.txt
+                                '''
+                            }
+                        }
+                        stage('Win - Test') {
+                            steps {
+                                script {
+                                    def m = params.TEST_SUITE == 'all' ? '' : "-m ${params.TEST_SUITE}"
+                                    bat """
+                                        call venv\\Scripts\\activate.bat
+                                        python -m pytest ${m} -v --tb=short ^
+                                            --alluredir=evidence\\allure-results ^
+                                            --junitxml=evidence\\junit-win.xml ^
+                                            2>&1 || exit /b 0
+                                    """
+                                }
+                            }
+                        }
+                        stage('Win - Collect') {
+                            steps {
+                                archiveArtifacts artifacts: 'evidence/**/*', allowEmptyArchive: true
+                                junit testResults: 'evidence/junit-win.xml', allowEmptyResults: true
+                                stash name: 'win-allure', includes: 'evidence/allure-results/**', allowEmpty: true
+                            }
+                        }
+                    }
+                }
+                stage('Linux') {
+                    when { expression { params.RUN_LINUX } }
+                    agent { label 'linux' }
+                    stages {
+                        stage('Linux - Setup') {
+                            steps {
+                                sh '''
+                                    python3 -m venv venv
+                                    . venv/bin/activate
+                                    pip install -r requirements.txt
+                                '''
+                            }
+                        }
+                        stage('Linux - Test') {
+                            steps {
+                                script {
+                                    def m = params.TEST_SUITE == 'all' ? '' : "-m ${params.TEST_SUITE}"
+                                    sh """
+                                        . venv/bin/activate
+                                        python3 -m pytest ${m} -v --tb=short \
+                                            --alluredir=evidence/allure-results \
+                                            --junitxml=evidence/junit-linux.xml \
+                                            || true
+                                    """
+                                }
+                            }
+                        }
+                        stage('Linux - Collect') {
+                            steps {
+                                archiveArtifacts artifacts: 'evidence/**/*', allowEmptyArchive: true
+                                junit testResults: 'evidence/junit-linux.xml', allowEmptyResults: true
+                                stash name: 'linux-allure', includes: 'evidence/allure-results/**', allowEmpty: true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage('Allure Report') {
+            agent { label 'windows || linux' }
+            steps {
+                script {
+                    try { unstash 'win-allure' } catch (e) { echo "No Windows results" }
+                    try { unstash 'linux-allure' } catch (e) { echo "No Linux results" }
+                }
+                allure results: [[path: 'evidence/allure-results']]
+            }
+        }
+    }
+}

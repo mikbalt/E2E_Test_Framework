@@ -1,0 +1,36 @@
+# =============================================================================
+# Test Configuration for My HSM Application
+# =============================================================================
+# Copy this to your repo and modify as needed.
+# The framework reads this automatically from config/settings.yaml
+
+apps:
+  my_app:
+    path: "C:\\Program Files\\MyCompany\\MyApp.exe"
+    title: "My Application*"
+    startup_wait: 5
+    backend: "uia"
+
+console_tools:
+  my_tool:
+    command_windows: "my-tool.exe"
+    command_linux: "./my-tool"
+    working_dir_windows: "C:\\Tools"
+    working_dir_linux: "/opt/tools"
+    timeout: 30
+
+evidence:
+  base_dir: "evidence"
+  screenshot_on_failure: true
+
+kiwi_tcms:
+  enabled: false
+  url: "https://kiwi.yourcompany.com"
+  product: "My HSM App"
+  plan_id: 1
+  auto_create_run: true
+
+metrics:
+  enabled: false
+  pushgateway_url: "http://localhost:9091"
+  job_name: "my_app_tests"

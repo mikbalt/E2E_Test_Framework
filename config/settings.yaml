@@ -1,0 +1,88 @@
+# =============================================================================
+# HSM Test Framework - Configuration
+# =============================================================================
+# Platform-aware: paths auto-resolve based on OS.
+# Override via environment variables for CI/CD flexibility.
+
+# --- Application Under Test (Windows only) ---
+apps:
+  # Example: HSM Admin Tool (replace paths with your actual app)
+  hsm_admin:
+    path: "C:\\Program Files\\YourCompany\\HSMAdmin.exe"
+    title: "HSM Admin*"            # Window title pattern (wildcard supported)
+    startup_wait: 5                # Seconds to wait after launch
+    backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
+
+  # Example: Windows Calculator (for initial testing/demo)
+  calculator:
+    path: "calc.exe"
+    title: "Calculator"
+    startup_wait: 2
+    backend: "uia"
+
+# --- Console Tools (cross-platform) ---
+# Paths can be overridden per platform.
+# Or set env: PKCS11_TOOL_PATH=/usr/bin/pkcs11-tool
+console_tools:
+  pkcs11_native:
+    command_windows: "pkcs11-tool.exe"
+    command_linux: "pkcs11-tool"
+    working_dir_windows: "C:\\Tools\\pkcs11"
+    working_dir_linux: "/opt/tools/pkcs11"
+    timeout: 30
+
+  pkcs11_go:
+    command_windows: "pkcs11-go-tool.exe"
+    command_linux: "./pkcs11-go-tool"
+    working_dir_windows: "C:\\Tools\\pkcs11-go"
+    working_dir_linux: "/opt/tools/pkcs11-go"
+    timeout: 30
+
+  pkcs11_java:
+    command: "java"                # Java is cross-platform
+    args: ["-jar", "pkcs11-test.jar"]
+    working_dir_windows: "C:\\Tools\\pkcs11-java"
+    working_dir_linux: "/opt/tools/pkcs11-java"
+    timeout: 60
+
+  pkcs11_cpp:
+    command_windows: "pkcs11_test.exe"
+    command_linux: "./pkcs11_test"
+    working_dir_windows: "C:\\Tools\\pkcs11-cpp"
+    working_dir_linux: "/opt/tools/pkcs11-cpp"
+    timeout: 30
+
+# --- Evidence Settings ---
+evidence:
+  base_dir: "evidence"
+  screenshots: true
+  screenshot_on_failure: true
+  screenshot_on_step: true
+  video_recording: false           # Set true if ffmpeg is installed
+  ffmpeg_path: "ffmpeg"
+  log_level: "INFO"
+
+# --- Kiwi TCMS ---
+kiwi_tcms:
+  enabled: false                   # Set true after Kiwi TCMS is configured
+  url: "https://kiwi.yourcompany.com"
+  # Credentials via environment variables:
+  # TCMS_API_URL, TCMS_USERNAME, TCMS_PASSWORD
+  product: "HSM Suite"
+  plan_id: 1
+  auto_create_run: true
+
+# --- Grafana / Prometheus ---
+metrics:
+  enabled: false                   # Set true after Prometheus Pushgateway is ready
+  pushgateway_url: "http://localhost:9091"
+  job_name: "hsm_tests"
+  labels:
+    environment: "staging"
+    team: "security"
+
+# --- Jenkins ---
+jenkins:
+  workspace_windows: "C:\\Jenkins\\workspace\\hsm-tests"
+  workspace_linux: "/var/lib/jenkins/workspace/hsm-tests"
+  artifacts_dir: "evidence"
