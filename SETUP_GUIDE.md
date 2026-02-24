@@ -302,6 +302,146 @@ export TCMS_PASSWORD=your_pass
 
 ---
 
+## Running Tests Per-Part
+
+By default, `run_tests.bat` or `pytest` runs **everything**. To run step by step:
+
+### Via run script
+
+```cmd
+REM Windows: run UI tests first, then console tests
+scripts\run_tests.bat ui
+scripts\run_tests.bat console
+
+REM Or chain them (console only runs if UI passes):
+scripts\run_tests.bat ui && scripts\run_tests.bat console
+```
+
+```bash
+# Linux: same pattern
+./scripts/run_tests.sh console
+./scripts/run_tests.sh pkcs11
+```
+
+### Via pytest directly
+
+```bash
+# Activate venv first
+venv\Scripts\activate.bat         # Windows
+source venv/bin/activate          # Linux
+
+# Run by marker
+pytest -m ui                      # Windows UI tests only
+pytest -m console                 # Console/CLI tests only
+pytest -m pkcs11                  # PKCS#11 tests only
+pytest -m smoke                   # Quick smoke tests (UI + console)
+pytest -m regression              # Full regression
+
+# Run a specific test file
+pytest tests/ui/test_sample_app.py -v
+
+# Run a specific test class
+pytest tests/ui/test_sample_app.py::TestCalculatorDemo -v
+
+# Run a single test method
+pytest tests/ui/test_sample_app.py::TestCalculatorDemo::test_basic_addition -v
+
+# Run with keyword filter
+pytest -k "pkcs11 and not java" -v
+```
+
+### Available markers (defined in pyproject.toml)
+
+| Marker | What it runs | Platform |
+|--------|-------------|----------|
+| `ui` | Windows UI automation tests | Windows only (auto-skipped on Linux) |
+| `console` | Console/CLI tests | Windows + Linux |
+| `pkcs11` | PKCS#11 specific tests | Windows + Linux |
+| `smoke` | Quick verification tests | Both |
+| `regression` | Full regression suite | Both |
+
+---
+
+## Discovering UI Element IDs
+
+Before writing UI tests, you need to know the **button names**, **automation IDs**,
+and **control types** of your application. Use the included inspector tool:
+
+### Quick Inspect (launch app and scan)
+
+```cmd
+REM Inspect Windows Calculator
+python scripts\inspect_app.py "calc.exe"
+
+REM Inspect your app by path
+python scripts\inspect_app.py "C:\Program Files\YourApp\App.exe"
+
+REM Inspect an already running app by window title
+python scripts\inspect_app.py --title "My Application"
+```
+
+### Save to File (for reference while writing tests)
+
+```cmd
+python scripts\inspect_app.py --title "Calculator" --output controls.txt
+```
+
+### Deep Scan (more nested levels)
+
+```cmd
+python scripts\inspect_app.py --title "Calculator" --depth 5
+```
+
+### Interactive Mode (hover to identify)
+
+```cmd
+python scripts\inspect_app.py --title "Calculator" --interactive
+```
+Move your mouse over elements in the app — the terminal prints the element info in real time.
+
+### Try Different Backends
+
+If no elements are found, switch the backend:
+```cmd
+REM uia = WPF / modern apps (default)
+python scripts\inspect_app.py --title "My App" --backend uia
+
+REM win32 = WinForms / classic apps
+python scripts\inspect_app.py --title "My App" --backend win32
+```
+
+### Reading the Output
+
+The inspector outputs three sections:
+
+**1. CLICKABLE ELEMENTS** — buttons, menus, tabs, checkboxes
+```
+Type                 Name/Title              AutomationId            How to Use in Test
+Button               Seven                   num7Button              driver.click_button(auto_id="num7Button")
+Button               Plus                    plusButton               driver.click_button(auto_id="plusButton")
+```
+
+**2. INPUT FIELDS** — text boxes, dropdowns
+```
+Type                 Name/Title              AutomationId            How to Use in Test
+Edit                 Search                  SearchBox               driver.type_text("hello", auto_id="SearchBox")
+ComboBox             Language                LanguageSelector        driver.select_combobox(auto_id="LanguageSelector", value="English")
+```
+
+**3. TEXT / STATUS ELEMENTS** — labels, status bars
+```
+Type                 Text Content                     AutomationId            How to Use in Test
+Text                 Display is 0                     CalculatorResults       driver.get_text(auto_id="CalculatorResults")
+```
+
+### Priority: AutomationId > Name
+
+- **Use `auto_id=`** whenever available — it's stable across app updates
+- **Use `name=`** as fallback — it may change if the UI text changes
+- If neither works, use `control_type=` + `found_index=`
+
+---
+
 ## Quick Reference: Common Commands
 
 ```bash
@@ -312,29 +452,27 @@ venv\Scripts\activate.bat         # Windows
 # Run all tests
 pytest
 
-# Run by marker
-pytest -m smoke                   # Quick smoke tests
-pytest -m ui                      # Windows UI tests only
-pytest -m console                 # Console/CLI tests only
-pytest -m pkcs11                  # PKCS#11 tests only
-pytest -m regression              # Full regression
+# Run per-part (recommended order)
+pytest -m ui                      # Step 1: Windows UI tests
+pytest -m console                 # Step 2: Console tests
+pytest -m pkcs11                  # Step 3: PKCS#11 tests
 
-# Run specific test file
+# Run specific file / class / method
 pytest tests/ui/test_sample_app.py -v
+pytest tests/ui/test_sample_app.py::TestCalculatorDemo -v
+pytest tests/ui/test_sample_app.py::TestCalculatorDemo::test_basic_addition -v
 
-# Run with Allure report
-pytest --alluredir=evidence/allure-results
+# Run with keyword filter
+pytest -k "slot" -v               # Runs any test with "slot" in the name
+
+# Inspect app UI (discover element IDs)
+python scripts/inspect_app.py "calc.exe"
+python scripts/inspect_app.py --title "My App" --output controls.txt
+python scripts/inspect_app.py --title "My App" --interactive
+
+# Allure report
 allure serve evidence/allure-results     # Live preview
 allure generate evidence/allure-results  # Static HTML
-
-# Debug: print UI control tree of an app
-python -c "
-from hsm_test_framework import UIDriver
-d = UIDriver('calc.exe', title='Calculator')
-d.start()
-d.print_control_tree(depth=3)
-d.close()
-"
 
 # Upgrade the framework in a consumer repo
 pip install --upgrade git+https://gitlab.yourcompany.com/qa/hsm-test-framework.git
