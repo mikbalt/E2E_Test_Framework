@@ -286,6 +286,13 @@ def console():
 
 
 @pytest.fixture
+def log_collector(evidence):
+    """Provide LogCollector instance linked to current test's evidence."""
+    from hsm_test_framework.log_collector import LogCollector
+    return LogCollector(evidence=evidence)
+
+
+@pytest.fixture
 def ui_app(request):
     """
     Generic UI app fixture. Auto-skips on non-Windows.

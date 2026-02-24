@@ -19,9 +19,33 @@
 - [x] Kiwi TCMS integration
 - [x] Grafana/Prometheus metrics push
 - [x] Jenkinsfile (multi-agent, parallel Windows + Linux)
-- [x] Consumer repo template
+- [x] Consumer repo template (UI + general)
 - [x] Setup scripts with auto Python version detection
 - [x] SETUP_GUIDE.md
+- [x] PRESENTATION.md (executive summary for managers)
+- [x] UI Inspector tool (`scripts/inspect_app.py`) — discover element IDs
+- [x] Per-part test execution (markers: ui, console, pkcs11, smoke, regression)
+
+## Phase 1.5: PKCS#11 Integration & Log Collection (DONE)
+
+- [x] `LogCollector` module — collect external log files as evidence
+- [x] `LogMonitor` — real-time log capture during test execution (only new lines)
+- [x] GTest XML parser — parse Google Test reports, create readable summaries
+- [x] Auto-collect from config (`collect_from_config` reads log_path, log_dir, gtest_xml)
+- [x] Large file handling — auto-tail files >10MB (last 500 lines)
+- [x] `log_collector` fixture — auto-available in all consumer repos
+- [x] `ConsoleRunner` enhancements: `run_make()`, `run_cmake_build()`, `run_executable()`
+- [x] PKCS#11 consumer repo template with 4 test types:
+  - [x] Java wrapper tests (pre-built JAR + Maven-built JAR)
+  - [x] C++ wrapper tests (pre-compiled executables)
+  - [x] Go wrapper tests (source built via `go build`)
+  - [x] Google Test wrapper tests (built via Makefile, XML parsed)
+- [x] Build scripts (`build.sh`/`build.bat`) — Java Maven, Go build, Makefile
+- [x] Auto-build session fixture (compiles before test session, skippable via `BUILD_SKIP=1`)
+- [x] New markers: `java`, `cpp`, `go_test`, `gtest`, `needs_build`
+- [x] Jenkinsfile for PKCS#11 (Build → Test → Report pipeline)
+- [x] Updated SETUP_GUIDE.md with PKCS#11 setup instructions
+- [x] Updated README.md with full feature documentation
 
 ---
 
@@ -142,7 +166,8 @@
 
 ## Notes
 
-- Phase 1 is complete and ready for production use
+- Phase 1 + 1.5 are complete and ready for production use
 - Phase 2 should be prioritized before scaling to more consumer repos
 - Phases 3-5 can be tackled incrementally based on team needs
 - Each phase is independent — pick what matters most for your workflow
+- LogCollector + PKCS#11 templates are fully documented in README.md and SETUP_GUIDE.md

@@ -302,6 +302,135 @@ export TCMS_PASSWORD=your_pass
 
 ---
 
+## Step-by-Step: Setting Up a PKCS#11 Consumer Repo
+
+For wrapping **existing PKCS#11 tests** (Java, C++, Go, Google Test):
+
+### 1. Copy the PKCS#11 Template
+
+```bash
+cp -r /path/to/hsm-test-framework/examples/pkcs11-consumer-template/ /path/to/pkcs11-tests/
+cd /path/to/pkcs11-tests/
+```
+
+### 2. Place Your Binaries and Source
+
+```
+bin/                          # Put pre-compiled binaries here
+  pkcs11-keygen.jar           # Java JAR (ready to run)
+  pkcs11_encrypt.exe          # C++ executable (ready to run)
+
+src/                          # Put source code here (if needs compilation)
+  java/signing/pom.xml        # Java Maven project
+  go/slot/main.go             # Go source
+  cpp/gtest_crypto/Makefile   # Google Test + Makefile
+```
+
+### 3. Configure `settings.yaml`
+
+Edit `config/settings.yaml` — set paths and log locations for each tool:
+
+```yaml
+console_tools:
+  pkcs11_java_keygen:
+    command_windows: "bin\\pkcs11-keygen.jar"
+    command_linux: "bin/pkcs11-keygen.jar"
+    needs_build: false
+    log_path_linux: "logs/java_keygen.log"     # <-- tool's own log file
+
+  pkcs11_cpp_encrypt:
+    command_windows: "bin\\pkcs11_encrypt.exe"
+    command_linux: "bin/pkcs11_encrypt"
+    needs_build: false
+    log_dir_linux: "logs/cpp/"                 # <-- or a directory of logs
+    log_pattern: "*.log"
+
+  pkcs11_gtest_crypto:
+    command_linux: "bin/pkcs11_gtest_crypto"
+    needs_build: true
+    makefile_dir: "src/cpp/gtest_crypto"
+    gtest_xml_linux: "evidence/gtest_results.xml"  # <-- GTest XML report
+```
+
+### 4. Install and Build
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Build source code (Java/Go/GTest)
+chmod +x scripts/build.sh
+./scripts/build.sh
+```
+
+### 5. Run Tests
+
+```bash
+# Run all PKCS#11 tests
+./scripts/run_tests.sh
+
+# Run by language
+./scripts/run_tests.sh java        # Java tests only
+./scripts/run_tests.sh cpp         # C++ tests only
+./scripts/run_tests.sh go_test     # Go tests only
+./scripts/run_tests.sh gtest       # Google Test only
+
+# Build + test in one command
+./scripts/run_tests.sh build_and_test
+```
+
+### 6. Log Collection
+
+The framework **automatically collects** each tool's log files:
+
+| Config Key | What It Does |
+|-----------|-------------|
+| `log_path_linux` / `log_path_windows` | Collects a single log file |
+| `log_dir_linux` / `log_dir_windows` | Collects all files from a directory |
+| `log_pattern` | File pattern for directory (default: `*.log`) |
+| `gtest_xml_linux` / `gtest_xml_windows` | Parses GTest XML and creates summary |
+
+All collected logs are attached to the Allure report automatically.
+
+You can also monitor logs in real-time during test execution:
+
+```python
+with log_collector.monitor("/path/to/app.log") as mon:
+    result = console.run_executable(exe_path=tool["command"], args=["--test"])
+# mon.captured contains only lines written during execution
+log_collector.collect_text(mon.captured, "runtime_log")
+```
+
+### 7. How It Works (The Wrapper Concept)
+
+Python does NOT replace your Java/C++/Go code. It **wraps** them:
+
+```
+Python Wrapper                    Your Existing Code
+─────────────────                 ──────────────────
+1. [Optional] Build               Java/C++/Go source unchanged
+2. Run binary via subprocess      Binary runs normally
+3. Capture stdout + stderr        Output captured for evidence
+4. Collect log files              Tool's own logs attached to report
+5. Assert exit code + output      Validate results
+6. Attach to Allure report        Evidence in HTML report
+```
+
+### Available PKCS#11 Markers
+
+| Marker | What it runs |
+|--------|-------------|
+| `java` | Java JAR-based PKCS#11 tests |
+| `cpp` | C++ native executable tests |
+| `go_test` | Go compiled binary tests |
+| `gtest` | Google Test (C++) suite tests |
+| `pkcs11` | All PKCS#11 tests (any language) |
+| `needs_build` | Tests that require compilation first |
+| `smoke` | Quick verification tests |
+
+---
+
 ## Running Tests Per-Part
 
 By default, `run_tests.bat` or `pytest` runs **everything**. To run step by step:
@@ -457,6 +586,13 @@ pytest -m ui                      # Step 1: Windows UI tests
 pytest -m console                 # Step 2: Console tests
 pytest -m pkcs11                  # Step 3: PKCS#11 tests
 
+# Run by language (PKCS#11 consumer repos)
+pytest -m java                    # Java JAR tests only
+pytest -m cpp                     # C++ native tests only
+pytest -m go_test                 # Go binary tests only
+pytest -m gtest                   # Google Test suite only
+pytest -m "pkcs11 and not gtest"  # PKCS#11 but exclude GTest
+
 # Run specific file / class / method
 pytest tests/ui/test_sample_app.py -v
 pytest tests/ui/test_sample_app.py::TestCalculatorDemo -v
@@ -464,6 +600,14 @@ pytest tests/ui/test_sample_app.py::TestCalculatorDemo::test_basic_addition -v
 
 # Run with keyword filter
 pytest -k "slot" -v               # Runs any test with "slot" in the name
+pytest -k "keygen or signing" -v  # Keygen or signing tests
+
+# Build source code (PKCS#11 consumer repos)
+./scripts/build.sh                # Build all (Java + Go + GTest)
+./scripts/build.sh java           # Build Java only
+./scripts/build.sh go             # Build Go only
+./scripts/build.sh gtest          # Build GTest/C++ only
+./scripts/build.sh clean          # Clean build artifacts
 
 # Inspect app UI (discover element IDs)
 python scripts/inspect_app.py "calc.exe"
@@ -493,3 +637,10 @@ pip install --upgrade git+https://gitlab.yourcompany.com/qa/hsm-test-framework.g
 | Kiwi TCMS connection failed | Verify env vars: `TCMS_API_URL`, `TCMS_USERNAME`, `TCMS_PASSWORD` |
 | Metrics not showing in Grafana | Check Pushgateway is running: `curl http://localhost:9091/metrics` |
 | Jenkins pipeline fails at setup | Ensure Python is in PATH on the agent. Check agent labels match Jenkinsfile |
+| Build script fails (Java) | Ensure Maven is installed: `mvn --version`. Check `pom.xml` path in settings.yaml |
+| Build script fails (Go) | Ensure Go is installed: `go version`. Check source path in settings.yaml |
+| Build script fails (GTest) | Ensure Make + GCC installed: `make --version`, `g++ --version` |
+| Binary not found (test skipped) | Run `scripts/build.sh` first, or place pre-built binary in `bin/` |
+| Log files not collected | Check `log_path` / `log_dir` in settings.yaml. Ensure paths are correct for your OS |
+| GTest XML empty | Ensure `--gtest_output=xml:path` flag is passed. Check the binary runs without errors |
+| `BUILD_SKIP` not working | Set env var: `export BUILD_SKIP=1` (Linux) or `set BUILD_SKIP=1` (Windows) |

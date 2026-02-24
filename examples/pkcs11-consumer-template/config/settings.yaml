@@ -1,0 +1,140 @@
+# ===========================================================
+# PKCS#11 Test Suite - Configuration
+# ===========================================================
+#
+# This file defines paths to binaries, log locations, and
+# build settings for each test tool. The framework resolves
+# platform-specific keys automatically:
+#
+#   command_windows  → used on Windows
+#   command_linux    → used on Linux/macOS
+#
+# If only 'command' is set, it's used on all platforms.
+# ===========================================================
+
+console_tools:
+
+  # ---------------------------------------------------------
+  # JAVA TESTS (JAR files)
+  # ---------------------------------------------------------
+
+  pkcs11_java_keygen:
+    description: "PKCS#11 Key Generation (Java)"
+    # Path to executable JAR
+    command_windows: "bin\\pkcs11-keygen.jar"
+    command_linux: "bin/pkcs11-keygen.jar"
+    # Set true if JAR needs to be built from source
+    needs_build: false
+    # Log file produced by the Java tool
+    log_path_windows: "logs\\java_keygen.log"
+    log_path_linux: "logs/java_keygen.log"
+    # Timeout for test execution (seconds)
+    timeout: 60
+
+  pkcs11_java_signing:
+    description: "PKCS#11 Digital Signing (Java)"
+    command_windows: "bin\\pkcs11-signing.jar"
+    command_linux: "bin/pkcs11-signing.jar"
+    needs_build: true
+    source_dir: "src/java/signing"
+    build_command: "mvn clean package -q -f src/java/signing/pom.xml"
+    log_path_windows: "logs\\java_signing.log"
+    log_path_linux: "logs/java_signing.log"
+    timeout: 60
+
+  # ---------------------------------------------------------
+  # C++ TESTS (pre-compiled executables)
+  # ---------------------------------------------------------
+
+  pkcs11_cpp_encrypt:
+    description: "PKCS#11 Encryption (C++ native)"
+    command_windows: "bin\\pkcs11_encrypt.exe"
+    command_linux: "bin/pkcs11_encrypt"
+    needs_build: false
+    # This tool writes logs to a directory
+    log_dir_windows: "logs\\cpp\\"
+    log_dir_linux: "logs/cpp/"
+    log_pattern: "*.log"
+    timeout: 60
+
+  pkcs11_cpp_token_mgmt:
+    description: "PKCS#11 Token Management (C++ native)"
+    command_windows: "bin\\pkcs11_token_mgmt.exe"
+    command_linux: "bin/pkcs11_token_mgmt"
+    needs_build: false
+    log_path_windows: "logs\\cpp_token.log"
+    log_path_linux: "logs/cpp_token.log"
+    timeout: 90
+
+  # ---------------------------------------------------------
+  # GO TESTS (compiled binary, may need 'go build')
+  # ---------------------------------------------------------
+
+  pkcs11_go_slot:
+    description: "PKCS#11 Slot Management (Go)"
+    command_windows: "bin\\pkcs11-slot.exe"
+    command_linux: "bin/pkcs11-slot"
+    needs_build: true
+    source_dir: "src/go/slot"
+    build_command_windows: "go build -o bin\\pkcs11-slot.exe ./src/go/slot/..."
+    build_command_linux: "go build -o bin/pkcs11-slot ./src/go/slot/..."
+    log_path_windows: "logs\\go_slot.log"
+    log_path_linux: "logs/go_slot.log"
+    timeout: 60
+
+  # ---------------------------------------------------------
+  # GOOGLE TEST / C++ (handled by Makefile, outputs XML)
+  # ---------------------------------------------------------
+
+  pkcs11_gtest_crypto:
+    description: "PKCS#11 Crypto Operations (Google Test / C++)"
+    command_windows: "bin\\pkcs11_gtest_crypto.exe"
+    command_linux: "bin/pkcs11_gtest_crypto"
+    needs_build: true
+    source_dir: "src/cpp/gtest_crypto"
+    build_via_makefile: true
+    makefile_dir: "src/cpp/gtest_crypto"
+    makefile_target: "all"
+    # GTest XML output (--gtest_output flag)
+    gtest_xml_windows: "evidence\\gtest_crypto_results.xml"
+    gtest_xml_linux: "evidence/gtest_crypto_results.xml"
+    log_dir_windows: "logs\\gtest\\"
+    log_dir_linux: "logs/gtest/"
+    log_pattern: "*.log"
+    timeout: 120
+
+
+# ===========================================================
+# Evidence Settings
+# ===========================================================
+
+evidence:
+  base_dir: "evidence"
+  screenshot_on_failure: true
+  # Collect external logs automatically after each test
+  auto_collect_logs: true
+
+
+# ===========================================================
+# Kiwi TCMS (optional — uncomment to enable)
+# ===========================================================
+
+kiwi_tcms:
+  enabled: false
+  # url: "https://kiwi.yourcompany.com"
+  # product: "PKCS#11 Suite"
+  # plan_id: 1
+  # auto_create_run: true
+
+
+# ===========================================================
+# Grafana / Prometheus Metrics (optional)
+# ===========================================================
+
+metrics:
+  enabled: false
+  # pushgateway_url: "http://your-pushgateway:9091"
+  # job_name: "pkcs11_tests"
+  # labels:
+  #   team: "security"
+  #   product: "pkcs11"

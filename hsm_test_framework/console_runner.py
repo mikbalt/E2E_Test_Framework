@@ -244,3 +244,58 @@ class ConsoleRunner:
     def run_go(self, binary_path, args=None, **kwargs):
         """Run a Go compiled binary."""
         return self.run(binary_path, args, **kwargs)
+
+    def run_make(self, target=None, makefile_dir=None, args=None, **kwargs):
+        """
+        Run a Makefile target.
+
+        Args:
+            target: Make target (e.g., 'test', 'build', 'clean'). None = default target.
+            makefile_dir: Directory containing the Makefile.
+            args: Additional make arguments.
+        """
+        cmd_args = []
+        if target:
+            cmd_args.append(target)
+        if args:
+            cmd_args.extend(args)
+
+        make_cmd = "make"
+        if IS_WINDOWS:
+            # Try mingw32-make or nmake on Windows
+            make_cmd = "mingw32-make"
+
+        return self.run(make_cmd, cmd_args, working_dir=makefile_dir, **kwargs)
+
+    def run_cmake_build(self, build_dir, config="Release", target=None, **kwargs):
+        """
+        Run cmake --build.
+
+        Args:
+            build_dir: Path to the CMake build directory.
+            config: Build configuration (Release, Debug, etc.).
+            target: Specific target to build.
+        """
+        cmd_args = ["--build", build_dir, "--config", config]
+        if target:
+            cmd_args.extend(["--target", target])
+
+        return self.run("cmake", cmd_args, **kwargs)
+
+    def run_executable(self, exe_path, args=None, **kwargs):
+        """
+        Run any compiled executable (C++, Go, Rust, etc.).
+
+        Convenience wrapper that handles platform differences for
+        executable paths (adds .exe on Windows if missing).
+
+        Args:
+            exe_path: Path to the executable.
+            args: Command-line arguments.
+        """
+        if IS_WINDOWS and not exe_path.endswith(".exe"):
+            # Check if .exe version exists
+            if os.path.exists(exe_path + ".exe"):
+                exe_path = exe_path + ".exe"
+
+        return self.run(exe_path, args, **kwargs)

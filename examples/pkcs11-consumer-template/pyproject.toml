@@ -1,0 +1,23 @@
+[project]
+name = "pkcs11-tests"
+version = "1.0.0"
+description = "PKCS#11 test suite — wraps Java, C++, Go, and GTest binaries"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--alluredir=evidence/allure-results -v --tb=short"
+log_cli = true
+log_cli_level = "INFO"
+timeout = 120
+markers = [
+    "console: Console/CLI based tests",
+    "pkcs11: PKCS#11 related tests",
+    "java: Java-based PKCS#11 tests",
+    "cpp: C++ compiled PKCS#11 tests",
+    "go_test: Go-based PKCS#11 tests",
+    "gtest: Google Test (C++) based tests",
+    "smoke: Quick smoke tests",
+    "regression: Full regression tests",
+    "needs_build: Tests requiring source compilation before execution",
+]
