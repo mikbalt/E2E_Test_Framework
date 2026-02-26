@@ -19,6 +19,7 @@ import datetime
 import logging
 import os
 import time
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +50,16 @@ class Evidence:
         logger.info(f"Evidence dir: {self.evidence_dir}")
 
     def step(self, description):
-        """Mark a test step for evidence tracking."""
+        """Mark a test step for evidence tracking.
+
+        Note: This method only handles logging and counting.
+        Allure step integration is handled by tracked_step() or
+        manual allure.step() wrapping to avoid double-nesting.
+        """
         self.step_count += 1
         msg = f"STEP {self.step_count}: {description}"
         logger.info(msg)
         self.log_entries.append(msg)
-
-        try:
-            import allure
-            with allure.step(description):
-                pass
-        except ImportError:
-            pass
 
     def screenshot(self, driver, name=None):
         """
@@ -217,7 +216,39 @@ class StepTracker:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         suffix = "fail" if exc_type else "pass"
-        self.evidence.screenshot(
-            self.driver,
-            f"step_{self.evidence.step_count:03d}_{suffix}",
-        )
+        name = f"step_{self.evidence.step_count:03d}_{suffix}"
+        result = self.evidence.screenshot(self.driver, name)
+        if result is None:
+            # Fallback: capture full desktop if window screenshot failed
+            logger.warning("Window screenshot failed, falling back to desktop screenshot")
+            self.evidence.desktop_screenshot(f"{name}_desktop")
+
+
+@contextmanager
+def tracked_step(evidence, driver, description):
+    """
+    Combined allure.step + StepTracker — eliminates double nesting.
+
+    Replaces:
+        with allure.step("desc"):
+            with StepTracker(evidence, driver, "desc"):
+                ...
+
+    With:
+        with tracked_step(evidence, driver, "desc"):
+            ...
+
+    Args:
+        evidence: Evidence instance for logging and screenshots.
+        driver: UIDriver instance for window screenshots.
+        description: Human-readable step description.
+    """
+    try:
+        import allure
+
+        with allure.step(description):
+            with StepTracker(evidence, driver, description):
+                yield
+    except ImportError:
+        with StepTracker(evidence, driver, description):
+            yield

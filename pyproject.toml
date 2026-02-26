@@ -15,19 +15,18 @@ dependencies = [
     "Pillow>=10.0.0",
     "mss>=9.0.0",
     "PyYAML>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "tcms-api>=12.0",
 ]
 
 [project.optional-dependencies]
 # Windows-only: UI automation
 ui = ["pywinauto>=0.6.8"]
-# Kiwi TCMS integration
-tcms = ["tcms-api>=12.0"]
 # Grafana/Prometheus metrics
 metrics = ["prometheus-client>=0.20.0"]
 # All optional dependencies
 all = [
     "pywinauto>=0.6.8",
-    "tcms-api>=12.0",
     "prometheus-client>=0.20.0",
 ]
 
@@ -46,11 +45,15 @@ markers = [
     "pkcs11: PKCS#11 related tests",
     "smoke: Quick smoke tests",
     "regression: Full regression tests",
+    "critical: Critical path tests that must pass",
+    "e_admin: E-Admin application specific tests",
+    "slow: Tests that take longer than 30 seconds",
 ]
 addopts = [
     "-v",
     "--tb=short",
     "--strict-markers",
+    "--color=no",
     "--alluredir=evidence/allure-results",
 ]
 log_cli = true
@@ -58,3 +61,6 @@ log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 timeout = 120
+filterwarnings = [
+    "ignore:Revert to STA COM threading mode:UserWarning",
+]

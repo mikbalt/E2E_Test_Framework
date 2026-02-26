@@ -3,7 +3,7 @@ REM =====================================================
 REM HSM Test Framework - First-time Setup (Windows)
 REM =====================================================
 REM Supports side-by-side Python installs.
-REM Tries: py -3.11, py -3.10, py -3.9, python3, python
+REM Tries: py -3.11, py -3.10, py -3.9, python, python
 REM =====================================================
 
 setlocal
@@ -35,11 +35,11 @@ if %ERRORLEVEL% equ 0 (
     )
 )
 
-REM Fallback: try python3 then python
+REM Fallback: try python then python
 if not defined PYTHON_CMD (
-    python3 --version >nul 2>nul
+    python --version >nul 2>nul
     if %ERRORLEVEL% equ 0 (
-        set PYTHON_CMD=python3
+        set PYTHON_CMD=python
     ) else (
         python --version >nul 2>nul
         if %ERRORLEVEL% equ 0 (

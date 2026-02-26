@@ -14,7 +14,7 @@ Designed as a **shared base package** — install once, use across multiple test
 |--------|-------------|
 | `ui_driver.py` | Windows UI automation via pywinauto. Supports WPF, WinForms, Win32. Wraps common actions: click, type, get text, select menu/tab/combobox. |
 | `console_runner.py` | Subprocess wrapper for CLI tools. Captures stdout/stderr/duration. Built-in assertions (`assert_success`, `assert_output_contains`). Helpers for Java, Go, Make, CMake, and generic executables. Cross-platform path resolution. |
-| `evidence.py` | Collects screenshots (per step + on failure), logs, and text output. Auto-attaches to Allure reports. `StepTracker` context manager for step-by-step evidence. |
+| `evidence.py` | Collects screenshots (per step + on failure), logs, and text output. Auto-attaches to Allure reports. `StepTracker` context manager for step-by-step evidence. `tracked_step` combines `allure.step` + `StepTracker` into a single context manager. |
 | `log_collector.py` | **Collects external log files** from test tools. Supports single files, directories, real-time monitoring, and GTest XML parsing. Auto-attaches to Allure. |
 | `kiwi_tcms.py` | Reports test results to Kiwi TCMS. Auto-creates test runs, syncs pass/fail per test case. |
 | `grafana_push.py` | Pushes metrics (pass rate, duration, trends) to Prometheus Pushgateway for Grafana dashboards. |
@@ -36,7 +36,9 @@ When a consumer repo installs this framework, these fixtures are **automatically
 
 | File | Purpose |
 |------|---------|
-| `tests/ui/test_sample_app.py` | Demo: opens Windows Calculator, clicks buttons, verifies result. Template for HSM Admin app included. |
+| `tests/ui/e-admin.py` | **E-Admin connection test** — uses `tracked_step`, modular fixtures, explicit waits, rich Allure decorators. Reference implementation for UI tests. |
+| `tests/ui/conftest.py` | UI-specific fixtures (`e_admin_driver`, `e_admin_config`), COM init, auto-screenshot on failure hook. |
+| `tests/ui/test_sample_app.py` | Demo: opens Windows Calculator, clicks buttons, verifies result. |
 | `tests/console/test_pkcs11_sample.py` | Demo: runs PKCS#11 tools (native, Go, Java, C++). Cross-platform with `resolve_platform_config()`. |
 
 ### Tools & Scripts
@@ -205,12 +207,18 @@ python scripts/inspect_app.py --title "My App" --interactive    # Hover to ident
 | `smoke` | Quick verification tests | Both |
 | `regression` | Full regression suite | Both |
 | `needs_build` | Tests requiring compilation | Both |
+| `critical` | Critical path tests that must pass | Both |
+| `e_admin` | E-Admin application specific tests | Windows |
+| `slow` | Tests that take longer than 30 seconds | Both |
 
 ```bash
 # Run by marker
 pytest -m java -v                     # Java tests only
 pytest -m "pkcs11 and not gtest" -v   # PKCS#11 but exclude GTest
 pytest -m smoke -v                    # Quick smoke tests
+pytest -m "smoke and ui" -v           # Smoke UI tests only
+pytest -m "not slow" -v               # Skip slow tests
+pytest -m critical -v                 # Critical path only
 ```
 
 ---
@@ -276,11 +284,263 @@ pip install -r requirements.txt
 
 ```python
 from hsm_test_framework import (
-    UIDriver, ConsoleRunner, Evidence, StepTracker,
+    UIDriver, ConsoleRunner, Evidence, StepTracker, tracked_step,
     LogCollector, LogMonitor, resolve_platform_config,
 )
 
 # All fixtures auto-available: config, evidence, console, log_collector, ui_app
+```
+
+---
+
+## Pytest Standards & Best Practices
+
+This section defines the **standard patterns** for writing tests in this framework. All new tests should follow these conventions.
+
+### 1. Fixture Design — Separate Concerns
+
+**DO NOT** create fat `setup` fixtures that mix driver, evidence, and config. Use modular fixtures from `conftest.py`:
+
+```python
+# tests/ui/conftest.py — UI-specific fixtures
+
+@pytest.fixture(scope="session")
+def e_admin_config(config):
+    """Extract app config once per session."""
+    return config.get("apps", {}).get("e_admin", {})
+
+@pytest.fixture
+def e_admin_driver(e_admin_config):
+    """UIDriver that does NOT auto-close the app."""
+    from hsm_test_framework.ui_driver import UIDriver
+    driver = UIDriver(
+        app_path=e_admin_config.get("path"),
+        class_name=e_admin_config.get("class_name"),
+        backend=e_admin_config.get("backend", "uia"),
+        startup_wait=e_admin_config.get("startup_wait", 5),
+    )
+    driver.start()
+    yield driver
+    # Intentionally NO driver.close() — app stays open
+```
+
+Then in the test class, wire fixtures with a thin `setup`:
+
+```python
+class TestEAdminConnection:
+    @pytest.fixture(autouse=True)
+    def setup(self, e_admin_driver, evidence):
+        """Wire shared fixtures into test instance."""
+        self.driver = e_admin_driver
+        self.evidence = evidence
+        yield
+```
+
+> **Why?** Reusable across test files, separation of concerns, `evidence` auto-names from `request.node.name`.
+
+### 2. Use `tracked_step` — No Double Nesting
+
+`tracked_step` combines `allure.step()` + `StepTracker` into one context manager:
+
+```python
+from hsm_test_framework import tracked_step
+
+# BAD — double nesting, verbose
+with allure.step("Verify app is visible"):
+    with StepTracker(evidence, driver, "Verify app is visible"):
+        assert driver.main_window.is_visible()
+
+# GOOD — single context manager
+with tracked_step(evidence, driver, "Verify app is visible"):
+    assert driver.main_window.is_visible()
+```
+
+> `StepTracker` is still available for backward compatibility, but `tracked_step` is the recommended pattern.
+
+### 3. Use Explicit Waits — No `time.sleep()`
+
+`time.sleep()` is an anti-pattern: makes tests slow and flaky.
+
+```python
+# BAD — arbitrary delay
+time.sleep(2)
+driver.click_button(auto_id="btnOKE")
+
+# GOOD — wait for element to appear, then click
+driver.wait_for_element(timeout=10, auto_id="btnOKE", control_type="Button")
+driver.click_button(auto_id="btnOKE")
+```
+
+Available wait methods in `UIDriver`:
+
+| Method | Usage |
+|--------|-------|
+| `wait_for_element(timeout=10, **kwargs)` | Wait until element becomes visible |
+| `element_exists(**kwargs)` | Check if element exists (1s timeout, no error) |
+| `click_button(auto_id=...)` | Already has internal `wait("visible", timeout=10)` |
+| `click_element(**kwargs)` | Already has internal `wait("visible", timeout=10)` |
+| `type_text(text, auto_id=...)` | Already has internal `wait("visible", timeout=10)` |
+
+### 4. Allure Decorators — Full Usage
+
+Use rich Allure metadata for better report filtering and traceability:
+
+```python
+@allure.suite("UI Tests")
+@allure.feature("E-Admin - Connection")
+@allure.story("HSM Connection Workflow")              # User story
+@allure.tag("e-admin", "windows", "ui")               # Tags for filtering
+@allure.description("Verifies E-Admin can connect...") # Detailed description
+@allure.link("https://jira.com/HSM-101", name="HSM-101") # Link to ticket
+@pytest.mark.ui
+@pytest.mark.e_admin
+class TestEAdminConnection:
+
+    @allure.title("E-Admin - Verify Connection")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @pytest.mark.smoke
+    @pytest.mark.critical
+    def test_connect_and_load_dashboard(self):
+        ...
+```
+
+| Decorator | Purpose | Where |
+|-----------|---------|-------|
+| `@allure.suite` | Top-level grouping | Class |
+| `@allure.feature` | Feature area | Class |
+| `@allure.story` | User story / workflow | Class |
+| `@allure.tag` | Filterable tags | Class |
+| `@allure.description` | Detailed test description | Class or method |
+| `@allure.link` | Link to Jira/Kiwi ticket | Class or method |
+| `@allure.title` | Test display name | Method |
+| `@allure.severity` | BLOCKER / CRITICAL / NORMAL / MINOR / TRIVIAL | Method |
+
+### 5. Descriptive Assertion Messages
+
+Always provide failure context in assertions:
+
+```python
+# BAD — unhelpful on failure
+assert driver.main_window.is_visible()
+
+# GOOD — clear failure message
+assert driver.main_window.is_visible(), (
+    "E-Admin main window is not visible after launch"
+)
+```
+
+### 6. COM Threading (Windows UI Tests)
+
+COM initialization **must** run before pywinauto is imported. Place it in `tests/ui/conftest.py`, **not** in individual test files:
+
+```python
+# tests/ui/conftest.py — runs before any test in tests/ui/
+import ctypes
+try:
+    ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED
+except OSError:
+    pass
+```
+
+### 7. Auto-Screenshot on Failure
+
+The framework automatically captures screenshots when tests fail at **two levels**:
+
+| Level | Source | Allure Name | Handled By |
+|-------|--------|-------------|------------|
+| Desktop (full screen) | `mss` | `FAILURE_{test_name}` | `plugin.py` (auto) |
+| Window (app only) | `UIDriver.take_screenshot()` | `FAIL_window_{test_name}` | `tests/ui/conftest.py` (auto) |
+
+No manual setup needed — both hooks run automatically.
+
+### 8. Log Format — No ANSI Colors
+
+Logs are configured with `--color=no` in `pyproject.toml` to ensure clean output for log aggregation tools (Grafana Alloy, ELK, etc.):
+
+```
+2026-02-26 10:30:15 [INFO] E-Admin launched successfully
+2026-02-26 10:30:16 [INFO] Connect button clicked
+```
+
+> If you need terminal colors for local dev, override with: `pytest --color=yes`
+
+### Complete Test Example
+
+```python
+"""
+E-Admin UI Test - Connection and Dashboard Verification
+
+Run:
+    pytest tests/ui/e-admin.py -v
+    pytest -m "smoke and e_admin" -v
+"""
+import logging
+
+import allure
+import pytest
+
+from hsm_test_framework import tracked_step
+
+logger = logging.getLogger(__name__)
+
+
+@allure.suite("UI Tests")
+@allure.feature("E-Admin - Connection")
+@allure.story("HSM Connection Workflow")
+@allure.tag("e-admin", "windows", "ui")
+@pytest.mark.ui
+@pytest.mark.e_admin
+class TestEAdminConnection:
+
+    @pytest.fixture(autouse=True)
+    def setup(self, e_admin_driver, evidence):
+        """Wire shared fixtures into test instance."""
+        self.driver = e_admin_driver
+        self.evidence = evidence
+        yield
+
+    @allure.title("E-Admin - Verify Connection and Dashboard Load")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @allure.description(
+        "Verifies that E-Admin application can:\n"
+        "1. Launch and become visible\n"
+        "2. Connect to HSM via Connect button\n"
+        "3. Dismiss popups and confirm with OK\n"
+        "4. Load dashboard successfully"
+    )
+    @pytest.mark.smoke
+    @pytest.mark.critical
+    def test_connect_and_load_dashboard(self):
+        """Open E-Admin, connect, click OK, verify dashboard loads."""
+        driver = self.driver
+        evidence = self.evidence
+
+        with tracked_step(evidence, driver, "Verify app is visible"):
+            assert driver.main_window.is_visible(), (
+                "E-Admin main window is not visible after launch"
+            )
+            logger.info("E-Admin launched successfully")
+
+        with tracked_step(evidence, driver, "Click Connect button"):
+            driver.click_button(auto_id="btnUpdate")
+            logger.info("Connect button clicked")
+
+        driver.wait_for_element(timeout=10, auto_id="btnOKE", control_type="Button")
+
+        with tracked_step(evidence, driver, "Dismiss popup and click OK"):
+            popup = driver.check_popup()
+            if popup:
+                logger.info(f"Popup detected: '{popup.window_text()}'")
+            driver.click_button(auto_id="btnOKE")
+            logger.info("OK button clicked")
+
+        driver.refresh_window()
+
+        with tracked_step(evidence, driver, "Verify dashboard loaded"):
+            assert driver.main_window.is_visible(), (
+                "E-Admin window not visible after connection"
+            )
+            logger.info("Dashboard loaded successfully")
 ```
 
 ---

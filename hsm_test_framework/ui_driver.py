@@ -23,38 +23,56 @@ logger = logging.getLogger(__name__)
 class UIDriver:
     """Wrapper around pywinauto for simplified Windows UI automation."""
 
-    def __init__(self, app_path, title=None, backend="uia", startup_wait=3):
+    def __init__(self, app_path, title=None, class_name=None, backend="uia",
+                 startup_wait=3, work_dir=None):
         """
         Args:
             app_path: Path to executable or just the exe name if in PATH.
-            title: Window title pattern (supports wildcards).
+            title: Window title pattern (supports regex).
+            class_name: Window class name pattern (regex). Useful for apps
+                        with empty titles, e.g. 'WindowsForms10\\.Window.*'
             backend: 'uia' for WPF/modern apps, 'win32' for classic WinForms.
             startup_wait: Seconds to wait after launching the app.
+            work_dir: Working directory for the app. If None, auto-detected
+                      from app_path parent directory.
         """
         self.app_path = app_path
         self.title = title
+        self.class_name = class_name
         self.backend = backend
         self.startup_wait = startup_wait
         self.app = None
         self.main_window = None
+        # Auto-detect work_dir from app_path if not specified
+        if work_dir:
+            self.work_dir = work_dir
+        elif app_path and os.path.isabs(app_path):
+            self.work_dir = os.path.dirname(app_path)
+        else:
+            self.work_dir = None
 
     def start(self):
         """Launch the application and connect to its main window."""
         from pywinauto import Application
 
-        logger.info(f"Starting application: {self.app_path} (backend={self.backend})")
+        logger.info(f"Starting application: {self.app_path} (backend={self.backend}, work_dir={self.work_dir})")
 
         try:
             self.app = Application(backend=self.backend).start(
-                self.app_path, timeout=30
+                self.app_path, timeout=30, work_dir=self.work_dir
             )
         except Exception:
             # Fallback: try launching via subprocess then connecting
             logger.warning("Direct start failed, trying subprocess + connect...")
-            subprocess.Popen(self.app_path, shell=True)
+            subprocess.Popen(self.app_path, shell=True, cwd=self.work_dir)
             time.sleep(self.startup_wait)
+            connect_kwargs = {}
+            if self.title:
+                connect_kwargs["title_re"] = f".*{self.title}.*"
+            if self.class_name:
+                connect_kwargs["class_name_re"] = self.class_name
             self.app = Application(backend=self.backend).connect(
-                title_re=f".*{self.title}.*" if self.title else None,
+                **connect_kwargs,
                 timeout=30,
             )
 
@@ -85,12 +103,34 @@ class UIDriver:
 
     def _find_main_window(self):
         """Locate the main window of the application."""
+        criteria = {}
         if self.title:
-            self.main_window = self.app.window(title_re=f".*{self.title}.*")
+            criteria["title_re"] = f".*{self.title}.*"
+        if self.class_name:
+            criteria["class_name_re"] = self.class_name
+
+        if criteria:
+            self.main_window = self.app.window(**criteria)
         else:
             self.main_window = self.app.top_window()
 
         self.main_window.wait("visible", timeout=15)
+
+    def refresh_window(self):
+        """
+        Re-detect the main window. Call this after actions that change
+        the window (e.g. dialog dismissed, new form loaded).
+        Updates self.main_window to the current active window.
+        """
+        old_handle = self.main_window.handle if self.main_window else None
+        self._find_main_window()
+        new_handle = self.main_window.handle
+        title = self.main_window.window_text() or "(no title)"
+        if old_handle != new_handle:
+            logger.info(f"Window changed: handle {old_handle} → {new_handle} ('{title}')")
+        else:
+            logger.info(f"Window refreshed: same handle {new_handle} ('{title}')")
+        return self.main_window
 
     def click_button(self, name=None, auto_id=None, found_index=0):
         """
@@ -185,6 +225,68 @@ class UIDriver:
             elem = self.main_window.child_window(**kwargs)
             return elem.exists(timeout=1)
         except Exception:
+            return False
+
+    def check_popup(self):
+        """
+        Check if an unexpected popup/dialog appeared on top of main window.
+        Returns the popup window wrapper if found, None otherwise.
+        """
+        try:
+            top = self.app.top_window()
+            # Kalau top_window berbeda dari main_window → ada popup
+            if top.handle != self.main_window.handle:
+                title = top.window_text() or "(no title)"
+                logger.warning(f"Popup detected: '{title}' (handle={top.handle})")
+                return top
+        except Exception as e:
+            logger.debug(f"check_popup error: {e}")
+        return None
+
+    def dismiss_popup(self, button_name=None, auto_id=None):
+        """
+        Detect and dismiss a popup by clicking a button on it.
+
+        Args:
+            button_name: Text of button to click (e.g. "OK", "Yes", "Cancel").
+            auto_id: Automation ID of button to click.
+
+        Returns:
+            True if popup was found and dismissed, False otherwise.
+        """
+        popup = self.check_popup()
+        if popup is None:
+            logger.info("No popup detected")
+            return False
+
+        criteria = {"control_type": "Button"}
+        if auto_id:
+            criteria["auto_id"] = auto_id
+        elif button_name:
+            criteria["title"] = button_name
+        else:
+            # Default: coba cari OK, Yes, atau Close
+            for fallback in ["OK", "Yes", "Close"]:
+                try:
+                    btn = popup.child_window(title=fallback, control_type="Button")
+                    if btn.exists(timeout=1):
+                        btn.click_input()
+                        logger.info(f"Popup dismissed with '{fallback}' button")
+                        time.sleep(0.3)
+                        return True
+                except Exception:
+                    continue
+            logger.warning("Popup found but no dismiss button matched")
+            return False
+
+        try:
+            btn = popup.child_window(**criteria)
+            btn.click_input()
+            logger.info(f"Popup dismissed with {button_name or auto_id}")
+            time.sleep(0.3)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to dismiss popup: {e}")
             return False
 
     def print_control_tree(self, depth=3):

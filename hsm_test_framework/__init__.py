@@ -12,7 +12,7 @@ __version__ = "1.1.0"
 
 from hsm_test_framework.ui_driver import UIDriver
 from hsm_test_framework.console_runner import ConsoleRunner, CommandResult, resolve_platform_config
-from hsm_test_framework.evidence import Evidence, StepTracker
+from hsm_test_framework.evidence import Evidence, StepTracker, tracked_step
 from hsm_test_framework.log_collector import LogCollector, LogMonitor
 from hsm_test_framework.kiwi_tcms import KiwiReporter
 from hsm_test_framework.grafana_push import MetricsPusher
@@ -24,6 +24,7 @@ __all__ = [
     "resolve_platform_config",
     "Evidence",
     "StepTracker",
+    "tracked_step",
     "LogCollector",
     "LogMonitor",
     "KiwiReporter",

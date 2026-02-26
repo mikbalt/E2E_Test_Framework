@@ -26,6 +26,10 @@ import time
 
 import pytest
 import yaml
+from dotenv import load_dotenv
+
+# Load .env file from project root (auto-loads TCMS credentials etc.)
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +81,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "pkcs11: PKCS#11 related tests")
     config.addinivalue_line("markers", "smoke: Quick smoke tests")
     config.addinivalue_line("markers", "regression: Full regression tests")
+    config.addinivalue_line("markers", "critical: Critical path tests that must pass")
+    config.addinivalue_line("markers", "e_admin: E-Admin application specific tests")
+    config.addinivalue_line("markers", "slow: Tests that take longer than 30 seconds")
 
     cfg = load_config()
     evidence_dir = cfg.get("evidence", {}).get("base_dir", "evidence")
@@ -119,9 +126,18 @@ def pytest_runtest_makereport(item, call):
             "nodeid": item.nodeid,
             "status": "PASSED" if report.passed else "FAILED",
             "duration": call.duration,
+            "evidence_dir": None,
         }
         if report.failed and call.excinfo:
             result["error"] = str(call.excinfo.value)
+
+        # Extract evidence_dir: fixture-based or instance-based
+        if hasattr(item, "funcargs") and "evidence" in item.funcargs:
+            result["evidence_dir"] = item.funcargs["evidence"].evidence_dir
+        elif hasattr(item, "instance") and hasattr(getattr(item, "instance", None), "evidence"):
+            ev = item.instance.evidence
+            if hasattr(ev, "evidence_dir"):
+                result["evidence_dir"] = ev.evidence_dir
 
         if not hasattr(item.session, "results"):
             item.session.results = []
@@ -202,6 +218,7 @@ def _push_to_kiwi(results, cfg):
             url=tcms_config.get("url"),
             product=tcms_config.get("product"),
             plan_id=tcms_config.get("plan_id"),
+            build_id=tcms_config.get("build_id"),
         )
 
         if not reporter.connect():
@@ -216,6 +233,7 @@ def _push_to_kiwi(results, cfg):
                 status=result["status"],
                 comment=result.get("error", ""),
                 duration=result.get("duration", 0),
+                evidence_dir=result.get("evidence_dir"),
             )
 
         reporter.finalize()
