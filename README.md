@@ -545,6 +545,367 @@ class TestEAdminConnection:
 
 ---
 
+## TCMS Integration & Test Documentation Workflow
+
+This framework uses a **two-level documentation model**: high-level test procedures live in Kiwi TCMS (written in Given/When/Then format), while granular automation code stays in Python. The two are linked via `@pytest.mark.tcms(case_id=X)`.
+
+### Why Not BDD/Gherkin in Python?
+
+Gherkin is used as a **documentation template in TCMS**, not as executable `.feature` files. Reasons:
+
+- **Complex workflows** (e.g. key ceremony) have 20-30 granular UI steps — Gherkin forces 1:1 step definitions, creating double maintenance with no added value.
+- **Mixed test types** — UI, console, PKCS#11 (Java/Go/C++/GTest) each have different patterns. BDD adds a layer that fits none of them well.
+- `tracked_step` + Allure decorators already provide structured, documented, evidence-rich test steps without a BDD layer.
+
+### The Two-Level Model
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  KIWI TCMS — Test Case (Source of Truth for Procedure)    │
+│                                                           │
+│  Summary: [E2E][eAdmin][Connect] Connect to HSM simulator │
+│  Text:                                                    │
+│    Given eAdmin is launched on Windows client              │
+│    When operator clicks Connect and confirms popup         │
+│    Then dashboard loads and HSM status shows Connected     │
+│                                                           │
+│  → High-level, business readable, 3-5 lines               │
+└────────────────────────┬──────────────────────────────────┘
+                         │  @pytest.mark.tcms(case_id=42)
+                         │
+┌────────────────────────▼──────────────────────────────────┐
+│  Python Test — Automation Code                            │
+│                                                           │
+│  with tracked_step("Given: eAdmin launched"):             │
+│      assert driver.main_window.is_visible()               │
+│                                                           │
+│  with tracked_step("When: Connect and confirm popup"):    │
+│      driver.click_button(auto_id="btnConnect")            │
+│      driver.wait_for_element(auto_id="btnOK")             │
+│      driver.click_button(auto_id="btnOK")                 │
+│                                                           │
+│  with tracked_step("Then: Dashboard loaded"):             │
+│      status = driver.get_text(auto_id="lblStatus")        │
+│      assert "Connected" in status                         │
+│                                                           │
+│  → Granular steps, auto-screenshots at every tracked_step │
+└────────────────────────┬──────────────────────────────────┘
+                         │
+                         ▼
+┌───────────────────────────────────────────────────────────┐
+│  Allure Report — Auto-Generated Evidence                  │
+│                                                           │
+│  Step 1: Given: eAdmin launched .............. PASS [img] │
+│  Step 2: When: Connect and confirm popup ..... PASS [img] │
+│  Step 3: Then: Dashboard loaded .............. PASS [img] │
+│                                                           │
+│  → Screenshots, logs, timing — all automatic              │
+└───────────────────────────────────────────────────────────┘
+```
+
+### TCMS Naming Convention → Allure Mapping
+
+TCMS Summary uses bracket tags: `[Test Level][Component][Feature] Test Name`
+
+These map directly to Allure decorators:
+
+| TCMS Summary Tag | Allure Decorator | Purpose |
+|------------------|-----------------|---------|
+| `[E2E]` | `@allure.suite("E2E")` | Top-level grouping |
+| `[eAdmin]` / `[PKCS11]` | `@allure.feature("eAdmin")` | Component |
+| `[Connect]` / `[Sign]` | `@allure.story("Connect")` | Feature / journey |
+| Test name | `@allure.title("...")` | Display name in report |
+| Text field (Given/When/Then) | `@allure.description("...")` | Procedure summary |
+| Case ID | `@pytest.mark.tcms(case_id=X)` | Bidirectional link |
+| TCMS Tags | `@allure.tag(...)` + `@pytest.mark.<marker>` | Filtering |
+
+### Complete Example: UI Test with TCMS Link
+
+```python
+# TCMS Case #42:
+#   Summary: [E2E][eAdmin][Connect] Connect to HSM simulator
+#   Text:
+#     Given eAdmin is launched on Windows client
+#     When operator clicks Connect and confirms popup
+#     Then dashboard loads and HSM status shows Connected
+
+@allure.suite("E2E")
+@allure.feature("eAdmin")
+@allure.story("Connect")
+@allure.tag("e-admin", "windows", "ui")
+@pytest.mark.ui
+@pytest.mark.e_admin
+@pytest.mark.tcms(case_id=42)
+class TestEAdminConnect:
+
+    @pytest.fixture(autouse=True)
+    def setup(self, e_admin_driver, evidence):
+        self.driver = e_admin_driver
+        self.evidence = evidence
+        yield
+
+    @allure.title("Connect to HSM simulator")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @allure.description(
+        "Given eAdmin is launched on Windows client\n"
+        "When operator clicks Connect and confirms popup\n"
+        "Then dashboard loads and HSM status shows Connected"
+    )
+    @pytest.mark.smoke
+    @pytest.mark.critical
+    def test_connect_to_hsm(self):
+        driver = self.driver
+        evidence = self.evidence
+
+        # Given
+        with tracked_step(evidence, driver, "Given: eAdmin launched"):
+            assert driver.main_window.is_visible(), (
+                "eAdmin main window is not visible after launch"
+            )
+
+        # When
+        with tracked_step(evidence, driver, "When: Connect and confirm popup"):
+            driver.click_button(auto_id="btnUpdate")
+            driver.wait_for_element(timeout=10, auto_id="btnOKE")
+            driver.click_button(auto_id="btnOKE")
+
+        driver.refresh_window()
+
+        # Then
+        with tracked_step(evidence, driver, "Then: Dashboard loaded"):
+            assert driver.main_window.is_visible(), (
+                "eAdmin window not visible after connection"
+            )
+```
+
+### Complete Example: Console/PKCS#11 Test with TCMS Link
+
+```python
+# TCMS Case #55:
+#   Summary: [E2E][PKCS11][Sign] RSA sign + verify via HSM key
+#   Text:
+#     Given HSM is connected and RSA key 'TestRSA' exists
+#     When client sends C_Sign with RSA-PSS mechanism
+#     Then signature is non-empty and C_Verify returns CKR_OK
+
+@allure.suite("E2E")
+@allure.feature("PKCS11")
+@allure.story("Sign")
+@pytest.mark.console
+@pytest.mark.pkcs11
+@pytest.mark.tcms(case_id=55)
+class TestPKCS11Sign:
+
+    @allure.title("RSA sign + verify via HSM key")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @allure.description(
+        "Given HSM is connected and RSA key 'TestRSA' exists\n"
+        "When client sends C_Sign with RSA-PSS mechanism\n"
+        "Then signature is non-empty and C_Verify returns CKR_OK"
+    )
+    def test_rsa_sign_verify(self, config, console, evidence):
+        tool = resolve_platform_config(config["console_tools"]["pkcs11_native"])
+
+        # Given
+        result = console.run(tool["command"], ["--list-objects"])
+        result.assert_success("HSM must be connected")
+        result.assert_output_contains("TestRSA", case_sensitive=False)
+        evidence.attach_text(result.output, "given_key_listing")
+
+        # When
+        sign_result = console.run(tool["command"], [
+            "--sign", "--mechanism", "RSA-PSS",
+            "--id", "TestRSA", "--input-file", "test_data.bin",
+        ])
+        sign_result.assert_success("C_Sign should succeed")
+        evidence.attach_text(sign_result.output, "when_sign_output")
+
+        # Then
+        assert len(sign_result.stdout.strip()) > 0, (
+            "Signature output must be non-empty"
+        )
+        verify_result = console.run(tool["command"], [
+            "--verify", "--mechanism", "RSA-PSS",
+            "--id", "TestRSA", "--signature-file", "sig.bin",
+        ])
+        verify_result.assert_success("C_Verify must return CKR_OK")
+        evidence.attach_text(verify_result.output, "then_verify_output")
+```
+
+### `tracked_step` Labeling Convention
+
+Use Given/When/Then prefixes in step labels to match TCMS procedure:
+
+```python
+# Simple: one tracked_step per Given/When/Then
+with tracked_step(evidence, driver, "Given: HSM connected"):
+    ...
+with tracked_step(evidence, driver, "When: Generate RSA-2048 key"):
+    ...
+with tracked_step(evidence, driver, "Then: Key appears in list"):
+    ...
+
+# Complex: group sub-steps under one Given/When/Then
+with tracked_step(evidence, driver, "When: Execute key ceremony"):
+    driver.click_button(auto_id="btnKeyMgmt")
+    driver.select_combobox(auto_id="cmbKeyType", value="RSA-2048")
+    driver.type_text("MasterKey", auto_id="txtLabel")
+    driver.click_button(auto_id="btnGenerate")
+    driver.wait_for_element(auto_id="lblSuccess", timeout=30)
+    driver.click_button(auto_id="btnConfirm")
+```
+
+### Oracle Rules for Assertions
+
+Every `Then` / assertion must be (per TCMS guidelines):
+
+| Rule | Bad Example | Good Example |
+|------|-------------|--------------|
+| **Objective** | `"looks correct"` | `"Connected" in status_text` |
+| **Deterministic** | `"should work"` | `result.returncode == 0` |
+| **Verifiable by evidence** | `"seems fine"` | Screenshot + text attachment |
+| **Not visual/subjective** | `"UI looks normal"` | `element_exists(auto_id="lblStatus")` |
+
+```python
+# BAD — weak oracle
+assert driver.main_window.is_visible()
+
+# GOOD — specific, with evidence
+status = driver.get_text(auto_id="lblStatus")
+assert "Connected" in status, (
+    f"Expected 'Connected' in status, got: '{status}'"
+)
+```
+
+### Where to Put What
+
+| Information | Where | Why |
+|-------------|-------|-----|
+| **Test procedure** (what to test) | TCMS Test Case text field | Source of truth, shared with team |
+| **Procedure summary** | `@allure.description(...)` | Quick reference in Allure report |
+| **Implementation** (how to automate) | Python test code with `tracked_step` | Executable, maintainable |
+| **Evidence** (proof of execution) | Allure report (auto-generated) | Screenshots, logs, timing per step |
+| **Traceability** | `@pytest.mark.tcms(case_id=X)` | Links Python ↔ TCMS bidirectionally |
+
+### TCMS Bidirectional Flow (`--kiwi-run-id`)
+
+When you run `pytest --kiwi-run-id=123`, the framework executes a **bidirectional sync** between Kiwi TCMS and your test suite. Here is the complete flow:
+
+```
+pytest --kiwi-run-id=123
+
+ PHASE 1: PULL (pytest_configure)
+ ─────────────────────────────────────────────────────────────
+ │
+ │  1. Connect to Kiwi TCMS via XML-RPC
+ │  2. Fetch TestRun #123
+ │  3. Pull all TestCase entries from the run
+ │     → Returns: [{id: 42, summary: "[E2E][eAdmin][Connect]...",
+ │                   execution_id: 501}, ...]
+ │
+ ▼
+ PHASE 2: MATCH (pytest_collection_modifyitems)
+ ─────────────────────────────────────────────────────────────
+ │
+ │  Scan all collected Python tests for @pytest.mark.tcms(case_id=X)
+ │
+ │  For each Python test:
+ │    Has @pytest.mark.tcms(case_id=42)?
+ │      → case_id 42 exists in TestRun #123?
+ │        YES → SELECTED (will execute, linked to TCMS case)
+ │        NO  → DESELECTED (case_id not in this run)
+ │    No @pytest.mark.tcms?
+ │      → DESELECTED (no TCMS link)
+ │
+ │  For each TCMS case in the run:
+ │    Matched by any Python test?
+ │      YES → will be updated with PASSED/FAILED after execution
+ │      NO  → logged as WARNING: "no automation test available"
+ │
+ │  Example output:
+ │    Kiwi filter: 6 matched, 4 deselected, 2 TCMS cases without automation
+ │    WARNING: TCMS COVERAGE GAP: 2 test case(s) have no matching test
+ │      - Case #50: [E2E][eAdmin][KeyCeremony] Full key ceremony
+ │      - Case #51: [E2E][CPS][Provision] Certificate provisioning
+ │
+ ▼
+ PHASE 3: EXECUTE (pytest runs selected tests)
+ ─────────────────────────────────────────────────────────────
+ │
+ │  Only matched tests run. Each test executes normally with
+ │  tracked_step, evidence collection, screenshots, etc.
+ │
+ ▼
+ PHASE 4: PUSH (pytest_sessionfinish)
+ ─────────────────────────────────────────────────────────────
+ │
+ │  For each executed test:
+ │    → Update TCMS TestExecution status: PASSED or FAILED
+ │    → Attach comment with error details (if failed)
+ │    → Attach evidence files (screenshots, logs)
+ │
+ │  For each unmatched TCMS case:
+ │    → Update TCMS TestExecution status: BLOCKED
+ │    → Add comment: "No automation test found. Add
+ │      @pytest.mark.tcms(case_id=X) to link it."
+ │
+ │  Log summary:
+ │    ════════════════════════════════════════════
+ │    Kiwi TCMS Bidirectional Summary
+ │      Executed (matched):  6
+ │      No automation test:  2
+ │        BLOCKED  Case #50: [E2E][eAdmin][KeyCeremony]...
+ │        BLOCKED  Case #51: [E2E][CPS][Provision]...
+ │    ════════════════════════════════════════════
+```
+
+**Key design decisions:**
+
+| Decision | Rationale |
+|----------|-----------|
+| Only `@pytest.mark.tcms(case_id=X)` is used for matching | TCMS summaries use bracket-tag format (`[E2E][PKCS11][Sign]...`) which never matches Python function names. Explicit linking is reliable. |
+| Unmatched TCMS cases are marked BLOCKED (not silently ignored) | Prevents false confidence. The TCMS run clearly shows which cases have no automation yet. |
+| Unmatched Python tests are deselected (not skipped) | They don't belong to this TestRun. They still run normally without `--kiwi-run-id`. |
+| Comment is added to BLOCKED executions | Tells the TCMS reader exactly what to do: add the marker to a Python test. |
+
+**Usage examples:**
+
+```bash
+# Run tests linked to TCMS TestRun #123
+pytest --kiwi-run-id=123
+
+# Same, but also enable smoke gate
+pytest --kiwi-run-id=123 --smoke-gate
+
+# Override plan_id from settings.yaml
+pytest --kiwi-run-id=123 --kiwi-plan-id=50
+
+# Push-only mode: create a new run and push all results
+pytest --kiwi-create-run
+
+# Push-only with specific plan
+pytest --kiwi-create-run --kiwi-plan-id=50
+```
+
+**How to link a Python test to TCMS:**
+
+```python
+# Step 1: Find the TCMS TestCase ID (visible in Kiwi TCMS URL or list)
+# Step 2: Add the marker to your test class or method
+
+@pytest.mark.tcms(case_id=42)
+class TestEAdminConnect:
+    ...
+
+# Or on a specific method:
+class TestPKCS11:
+    @pytest.mark.tcms(case_id=55)
+    def test_rsa_sign_verify(self):
+        ...
+```
+
+---
+
 ## PKCS#11 Consumer Repo Structure
 
 ```
@@ -602,10 +963,7 @@ Test Execution
 |----------|----------|
 | **[SETUP_GUIDE.md](SETUP_GUIDE.md)** | Full setup instructions, prerequisites, Jenkins/Grafana/TCMS configuration, PKCS#11 consumer repo setup, per-part execution, UI element discovery, troubleshooting |
 | **[PRESENTATION.md](PRESENTATION.md)** | Executive summary for managers — problem, solution, architecture, integration flow, effort estimate, demo path |
-| **[TODO.md](TODO.md)** | Roadmap and future improvement ideas (5 phases) |
+| **[PLAN.md](PLAN.md)** | Prioritized action plan, TCMS convention, effort vs impact analysis |
 | **[config/settings.yaml](config/settings.yaml)** | Configuration reference with inline comments |
 | **[examples/consumer-repo-template/](examples/consumer-repo-template/)** | Boilerplate for UI + general console test repos |
 | **[examples/pkcs11-consumer-template/](examples/pkcs11-consumer-template/)** | Boilerplate for PKCS#11 test repos (Java, C++, Go, GTest) with build scripts |
-
-
-https://claude.ai/magic-link?client=desktop_app#553e1e0d6961cd18c11489ac2f85741a:YWltYW50YXAyMDIzZmJAZ21haWwuY29t

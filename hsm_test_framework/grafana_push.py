@@ -94,10 +94,9 @@ class MetricsPusher:
             return
 
         status = "passed" if passed else "failed"
-        label_values = list(self.labels.values())
 
         self.tests_total.labels(
-            suite=suite, test_name=test_name, status=status, *label_values
+            suite=suite, test_name=test_name, status=status, **self.labels
         ).inc()
 
         self.test_duration.labels(suite=suite, test_name=test_name).observe(duration)

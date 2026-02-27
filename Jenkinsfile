@@ -77,7 +77,7 @@ pipeline {
                                     def marker = (suite == 'all') ? '' : "-m ${suite}"
                                     bat """
                                         call venv\\Scripts\\activate.bat
-                                        python -m pytest ${marker} ^
+                                        python -m pytest --smoke-gate ${marker} ^
                                             -v ^
                                             --tb=short ^
                                             --alluredir=evidence\\allure-results ^
@@ -140,7 +140,7 @@ pipeline {
                                     def marker = (suite == 'all') ? '' : "-m ${suite}"
                                     sh """
                                         . venv/bin/activate
-                                        python3 -m pytest ${marker} \
+                                        python3 -m pytest --smoke-gate ${marker} \
                                             -v \
                                             --tb=short \
                                             --alluredir=evidence/allure-results \

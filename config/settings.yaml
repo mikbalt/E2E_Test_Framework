@@ -65,6 +65,22 @@ evidence:
   ffmpeg_path: "ffmpeg"
   log_level: "INFO"
 
+# --- Health Check (pre-execution environment verification) ---
+# Runs before test collection. Aborts early with clear diagnostics if
+# the target environment is not ready. Bypass with --skip-health-check.
+health_check:
+  enabled: true                    # Pre-execution environment verification
+  checks:
+    - type: "ping"
+      host: "10.66.1.10"
+      timeout: 5
+      label: "HSM Network Reachability"
+    - type: "tcp"
+      host: "10.66.1.10"
+      port: 52000
+      timeout: 5
+      label: "HSM E-Admin Port"
+
 # --- Kiwi TCMS ---
 kiwi_tcms:
   enabled: false                   # Set true after Kiwi TCMS is configured
@@ -75,6 +91,10 @@ kiwi_tcms:
   plan_id: 347
   build_id: 26                     # Build "PoC" for Test Product
   auto_create_run: true
+  # status_ids:                    # Optional: override if your Kiwi uses different IDs
+  #   PASSED: 4
+  #   FAILED: 5
+  #   BLOCKED: 6
 
 # --- Grafana / Prometheus ---
 metrics:

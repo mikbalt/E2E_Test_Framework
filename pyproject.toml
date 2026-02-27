@@ -48,6 +48,7 @@ markers = [
     "critical: Critical path tests that must pass",
     "e_admin: E-Admin application specific tests",
     "slow: Tests that take longer than 30 seconds",
+    "tcms(case_id): Map this test to a specific Kiwi TCMS TestCase ID",
 ]
 addopts = [
     "-v",

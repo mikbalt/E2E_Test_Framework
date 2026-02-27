@@ -58,10 +58,13 @@ Python version on your system. You don't need to change PATH or remove 3.8.
 | 1 | Python | >= 3.9 (3.11 recommended) | https://python.org/downloads → check "Add to PATH" | `py --list` |
 | 2 | Git | any | https://git-scm.com/download/win | `git --version` |
 | 3 | pip | latest | comes with Python | `pip --version` |
-| 4 | Allure CLI | >= 2.x | `scoop install allure` or https://github.com/allure-framework/allure2/releases | `allure --version` |
-| 5 | Java (JRE) | >= 11 | https://adoptium.net (needed by Allure CLI) | `java --version` |
+| 4 | Allure CLI | **3.x** (recommended) or 2.x | `npm install -g allure` (v3) or `scoop install allure` (v2) | `npx allure --version` |
+| 5 | Node.js | >= 18 | https://nodejs.org (needed by Allure 3) | `node --version` |
+| 6 | Java (JRE) | >= 11 | https://adoptium.net (needed by Allure 2 CLI) | `java --version` |
 
 > **Note:** `pywinauto` (for UI tests) is installed automatically via pip. No manual install needed.
+>
+> **Allure 3 vs 2:** Allure 3 is built on Node.js (no Java needed). Allure 2 requires Java. Both can coexist — use `npx allure` for v3, `allure` for v2.
 
 ### Linux (for Console/PKCS11 tests only)
 
@@ -69,8 +72,9 @@ Python version on your system. You don't need to change PATH or remove 3.8.
 |---|----------|---------|----------------|--------|
 | 1 | Python | >= 3.9 | `sudo apt install python3 python3-pip python3-venv` | `python3 --version` |
 | 2 | Git | any | `sudo apt install git` | `git --version` |
-| 3 | Allure CLI | >= 2.x | `sudo snap install allure` or manual download | `allure --version` |
-| 4 | Java (JRE) | >= 11 | `sudo apt install default-jre` | `java --version` |
+| 3 | Allure CLI | **3.x** (recommended) or 2.x | `npm install -g allure` (v3) or `sudo snap install allure` (v2) | `npx allure --version` |
+| 4 | Node.js | >= 18 | `sudo apt install nodejs npm` | `node --version` |
+| 5 | Java (JRE) | >= 11 | `sudo apt install default-jre` (only if using Allure 2) | `java --version` |
 
 ### Infrastructure (already available per your setup)
 
@@ -143,12 +147,20 @@ scripts\run_tests.bat smoke
 ### 5. View Results
 
 ```bash
-# Allure report (if Allure CLI is installed)
-allure open evidence/allure-report
+# ── Allure 3 (recommended) ──
+npx allure open evidence/allure-results          # Auto-generate + open in browser
+npx allure generate evidence/allure-results      # Generate static HTML report
+npx allure watch evidence/allure-results         # Real-time: auto-refresh as tests run
+
+# ── Allure 2 (legacy) ──
+allure serve evidence/allure-results              # Live preview (requires Java)
+allure generate evidence/allure-results           # Static HTML
 
 # Or just check the raw files
 ls evidence/
 ```
+
+> **Allure 3 key difference:** `allure serve` → replaced by `npx allure open`. New `npx allure watch` command for real-time monitoring.
 
 ---
 
@@ -193,8 +205,9 @@ pip install -r requirements.txt
 ### 5. Write Your Tests
 
 ```python
-from hsm_test_framework import UIDriver, ConsoleRunner, Evidence, StepTracker
+from hsm_test_framework import UIDriver, ConsoleRunner, Evidence, tracked_step
 # All fixtures (config, evidence, console, ui_app) are available automatically
+# See README.md "Pytest Standards & Best Practices" for conventions
 ```
 
 ---
@@ -488,6 +501,55 @@ pytest -k "pkcs11 and not java" -v
 | `pkcs11` | PKCS#11 specific tests | Windows + Linux |
 | `smoke` | Quick verification tests | Both |
 | `regression` | Full regression suite | Both |
+| `critical` | Critical path tests that must pass | Both |
+| `e_admin` | E-Admin application specific tests | Windows |
+| `slow` | Tests that take longer than 30 seconds | Both |
+
+```bash
+# Combine markers
+pytest -m "smoke and ui" -v           # Smoke UI tests only
+pytest -m "not slow" -v               # Skip slow tests
+pytest -m critical -v                 # Critical path only
+pytest -m "e_admin and smoke" -v      # E-Admin smoke tests
+```
+
+---
+
+## Conftest Structure (Per-Component)
+
+The framework uses a **layered conftest** pattern. Each level only loads what's relevant:
+
+```
+e2e_test_framework/
+├── conftest.py                  ← Root: minimal (plugin.py handles everything)
+├── tests/
+│   ├── conftest.py              ← Test-root: shared helpers across ui/ & console/
+│   ├── ui/
+│   │   ├── conftest.py          ← UI-specific: COM init, e_admin_driver, screenshot hook
+│   │   ├── e-admin.py
+│   │   └── test_sample_app.py
+│   └── console/
+│       ├── conftest.py          ← Console-specific: build fixtures, tool setup
+│       └── test_pkcs11_sample.py
+```
+
+**Loading order** (pytest loads from root → specific):
+
+```
+plugin.py              → Always loaded first (auto-registered, all repos get this)
+conftest.py            → Root conftest
+tests/conftest.py      → Shared test helpers
+tests/ui/conftest.py   → Only loaded when running tests/ui/* files
+```
+
+| Fixture/Hook needed by... | Put it in... |
+|---------------------------|-------------|
+| All tests in all repos | `plugin.py` (auto-registered) |
+| All tests in this repo | `tests/conftest.py` |
+| Only UI tests | `tests/ui/conftest.py` |
+| Only console tests | `tests/console/conftest.py` |
+
+> **Why per-component?** COM init in global conftest → console tests on Linux also load it (unnecessary). Per-component ensures only relevant code is loaded.
 
 ---
 
@@ -614,9 +676,14 @@ python scripts/inspect_app.py "calc.exe"
 python scripts/inspect_app.py --title "My App" --output controls.txt
 python scripts/inspect_app.py --title "My App" --interactive
 
-# Allure report
-allure serve evidence/allure-results     # Live preview
-allure generate evidence/allure-results  # Static HTML
+# Allure 3 report (recommended)
+npx allure open evidence/allure-results       # Auto-generate + open in browser
+npx allure watch evidence/allure-results      # Real-time monitoring
+npx allure generate evidence/allure-results   # Static HTML
+
+# Allure 2 report (legacy, requires Java)
+allure serve evidence/allure-results           # Live preview
+allure generate evidence/allure-results        # Static HTML
 
 # Upgrade the framework in a consumer repo
 pip install --upgrade git+https://gitlab.yourcompany.com/qa/hsm-test-framework.git
@@ -634,6 +701,9 @@ pip install --upgrade git+https://gitlab.yourcompany.com/qa/hsm-test-framework.g
 | UI tests skipped on Windows | Check `backend` in settings.yaml. Try `"win32"` instead of `"uia"` |
 | Cannot find window | Check `title` pattern in settings.yaml. Use `*` wildcard. Run `print_control_tree()` to debug |
 | Allure report empty | Ensure `--alluredir=evidence/allure-results` is passed. Check `evidence/allure-results/` has JSON files |
+| `allure serve` not working (v3) | Allure 3 replaced `serve` with `open`. Use: `npx allure open evidence/allure-results` |
+| Allure 2 and 3 conflict | Use `npx allure` for v3, `allure` for v2. Or remove v2: delete `C:\allure\` from PATH |
+| ANSI color codes in logs | Ensure `--color=no` is in `addopts` in `pyproject.toml`. Override for local dev: `pytest --color=yes` |
 | Kiwi TCMS connection failed | Verify env vars: `TCMS_API_URL`, `TCMS_USERNAME`, `TCMS_PASSWORD` |
 | Metrics not showing in Grafana | Check Pushgateway is running: `curl http://localhost:9091/metrics` |
 | Jenkins pipeline fails at setup | Ensure Python is in PATH on the agent. Check agent labels match Jenkinsfile |

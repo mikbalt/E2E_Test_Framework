@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"from tcms_api import TCMS; help\\(TCMS\\)\")",
+      "Bash(python3 -c \"import tcms_api; print\\(tcms_api.__file__\\)\")",
+      "Bash(python -c \"from hsm_test_framework import HealthChecker, SmokeGate, KiwiReporter; print\\(''All imports OK''\\)\")",
+      "Bash(python -m pytest --collect-only --co -q)",
+      "Bash(./venv/Scripts/python.exe -m pytest --collect-only --co -q)",
+      "Bash(./venv/Scripts/python.exe -m pytest --help)",
+      "Bash(./venv/Scripts/python.exe -m pytest --smoke-gate --collect-only -q)",
+      "Bash(./venv/Scripts/python.exe -m pytest --markers)",
+      "Bash(./venv/Scripts/python.exe -c \":*)"
+    ]
+  }
+}
