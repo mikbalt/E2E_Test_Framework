@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 @allure.feature("Calculator Demo")
 @pytest.mark.ui
 @pytest.mark.smoke
+@pytest.mark.skip(reason="Demo only — runs against Calculator, not an HSM test")
 class TestCalculatorDemo:
     """
     Demo test using Windows Calculator.

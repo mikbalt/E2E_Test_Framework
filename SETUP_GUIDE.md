@@ -296,21 +296,21 @@ metrics:
 
 ### 2. Enable in Framework
 
-Edit `config/settings.yaml`:
-```yaml
-kiwi_tcms:
-  enabled: true
-  url: "https://kiwi.yourcompany.com"
-  product: "HSM Suite"
-  plan_id: 1          # <-- your plan ID
-  auto_create_run: true
-```
-
 Set environment variables (or `.env` file):
 ```bash
 export TCMS_API_URL=https://kiwi.yourcompany.com/xml-rpc/
 export TCMS_USERNAME=your_user
 export TCMS_PASSWORD=your_pass
+```
+
+For bidirectional mode, that's all you need — run with `pytest --kiwi-run-id=123`.
+
+For push-only mode (`--kiwi-create-run`), also set `plan_id` in `config/settings.yaml`:
+```yaml
+kiwi_tcms:
+  enabled: true
+  plan_id: 1          # <-- your plan ID
+  auto_create_run: true
 ```
 
 ---
@@ -526,7 +526,7 @@ e2e_test_framework/
 │   ├── conftest.py              ← Test-root: shared helpers across ui/ & console/
 │   ├── ui/
 │   │   ├── conftest.py          ← UI-specific: COM init, e_admin_driver, screenshot hook
-│   │   ├── e-admin.py
+│   │   ├── test_e_admin.py
 │   │   └── test_sample_app.py
 │   └── console/
 │       ├── conftest.py          ← Console-specific: build fixtures, tool setup
@@ -714,3 +714,5 @@ pip install --upgrade git+https://gitlab.yourcompany.com/qa/hsm-test-framework.g
 | Log files not collected | Check `log_path` / `log_dir` in settings.yaml. Ensure paths are correct for your OS |
 | GTest XML empty | Ensure `--gtest_output=xml:path` flag is passed. Check the binary runs without errors |
 | `BUILD_SKIP` not working | Set env var: `export BUILD_SKIP=1` (Linux) or `set BUILD_SKIP=1` (Windows) |
+
+

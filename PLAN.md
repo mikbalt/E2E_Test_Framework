@@ -39,7 +39,7 @@
 
 | File | Tests | Status |
 |------|-------|--------|
-| `tests/ui/e-admin.py` | 1 test (`test_connect_and_load_dashboard`) | Active — only real test |
+| `tests/ui/test_e_admin.py` | 1 test (`test_connect_and_load_dashboard`) | Active — only real test |
 | `tests/ui/test_sample_app.py` | 2 tests (Calculator demo) + 1 skipped template | Demo only |
 | `tests/console/test_pkcs11_sample.py` | 7 tests (PKCS#11 samples) | Sample — tools not configured |
 | Framework unit tests | 0 | None exist |
@@ -138,7 +138,7 @@ The app is configured (`AdminApp.exe`, WinForms, HSM simulator). Only connection
 - [ ] Create `pages/e_admin_main.py` — main window actions
 - [ ] Create `pages/e_admin_settings.py` — settings panel actions
 - [ ] Create `pages/e_admin_connection.py` — connection dialog actions
-- [ ] Refactor `e-admin.py` to use POM classes
+- [ ] Refactor `test_e_admin.py` to use POM classes
 
 ---
 

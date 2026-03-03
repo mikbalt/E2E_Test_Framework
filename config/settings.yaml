@@ -8,13 +8,13 @@
 apps:
   # E-Admin Application
   e_admin:
-    path: "C:\\SPHERE_HSM\\Admin Application\\AdminApp.exe"  # TODO: update with actual path
+    path: "${E_ADMIN_PATH}"             # Required — set in .env
     class_name: "WindowsForms10\\.Window.*"  # WinForms app (title kosong)
     startup_wait: 5                # Seconds to wait after launch
     backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
     connection:
-      ip: "10.66.1.10"              # IP Simulator
-      port: "52000"                 # Connection port
+      ip: "${HSM_IP}"                # Required — set in .env
+      port: "${HSM_PORT}"           # Required — set in .env
 
   # Example: Windows Calculator (for initial testing/demo)
   calculator:
@@ -61,8 +61,7 @@ evidence:
   screenshots: true
   screenshot_on_failure: true
   screenshot_on_step: true
-  video_recording: false           # Set true if ffmpeg is installed
-  ffmpeg_path: "ffmpeg"
+  # video_recording: TODO — not yet implemented
   log_level: "INFO"
 
 # --- Health Check (pre-execution environment verification) ---
@@ -72,25 +71,25 @@ health_check:
   enabled: true                    # Pre-execution environment verification
   checks:
     - type: "ping"
-      host: "10.66.1.10"
+      host: "${HSM_IP}"            # Set in .env
       timeout: 5
       label: "HSM Network Reachability"
     - type: "tcp"
-      host: "10.66.1.10"
-      port: 52000
+      host: "${HSM_IP}"            # Set in .env
+      port: "${HSM_PORT}"          # Set in .env
       timeout: 5
       label: "HSM E-Admin Port"
 
 # --- Kiwi TCMS ---
+# Bidirectional mode (--kiwi-run-id): only url + credentials needed.
+# Push-only mode (--kiwi-create-run): also needs plan_id (and optionally build_id).
 kiwi_tcms:
   enabled: false                   # Set true after Kiwi TCMS is configured
-  url: "https://10.88.1.13/xml-rpc/"
-  # Credentials via environment variables:
-  # TCMS_API_URL, TCMS_USERNAME, TCMS_PASSWORD
-  product: "Test Product"
-  plan_id: 347
-  build_id: 26                     # Build "PoC" for Test Product
-  auto_create_run: true
+  url: "${TCMS_API_URL}"           # Required — set in .env
+  # Credentials: TCMS_USERNAME, TCMS_PASSWORD must be set in .env
+  plan_id: "${KIWI_PLAN_ID}"      # Optional — only for --kiwi-create-run
+  build_id: "${KIWI_BUILD_ID}"    # Optional — only for --kiwi-create-run
+  auto_create_run: false           # Set true to auto-create runs (needs plan_id)
   # status_ids:                    # Optional: override if your Kiwi uses different IDs
   #   PASSED: 4
   #   FAILED: 5
@@ -98,9 +97,9 @@ kiwi_tcms:
 
 # --- Grafana / Prometheus ---
 metrics:
-  enabled: false                   # Set true after Prometheus Pushgateway is ready
-  pushgateway_url: "http://localhost:9091"
-  job_name: "hsm_tests"
+  enabled: false                  # Set true after Prometheus Pushgateway is ready
+  pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
+  job_name: "E2E_Sphere_HSM"
   labels:
     environment: "staging"
     team: "security"

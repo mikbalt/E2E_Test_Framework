@@ -25,6 +25,7 @@ import datetime
 import logging
 import os
 import platform
+import re
 import time
 
 import pytest
@@ -49,6 +50,7 @@ def load_config(config_path=None):
     """
     Load settings.yaml from the consumer repo.
     Searches: config/settings.yaml (relative to cwd), then env HSM_CONFIG_PATH.
+    After loading, applies environment variable overrides (see _apply_env_overrides).
     """
     global _CONFIG_CACHE
     if _CONFIG_CACHE is not None:
@@ -66,11 +68,92 @@ def load_config(config_path=None):
             with open(path, "r") as f:
                 _CONFIG_CACHE = yaml.safe_load(f) or {}
                 logger.info(f"Config loaded from: {path}")
+                _CONFIG_CACHE = _resolve_placeholders(_CONFIG_CACHE)
+                _apply_env_overrides(_CONFIG_CACHE)
                 return _CONFIG_CACHE
 
     logger.warning("No settings.yaml found, using defaults")
     _CONFIG_CACHE = {}
+    _apply_env_overrides(_CONFIG_CACHE)
     return _CONFIG_CACHE
+
+
+_PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _resolve_placeholders(obj):
+    """
+    Walk a nested dict/list and replace all '${VAR}' placeholder strings
+    with the corresponding environment variable value (empty string if unset).
+
+    This ensures no literal '${...}' strings survive in the config dict,
+    regardless of whether _apply_env_overrides handles that specific key.
+    """
+    if isinstance(obj, dict):
+        return {k: _resolve_placeholders(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_resolve_placeholders(item) for item in obj]
+    if isinstance(obj, str) and "${" in obj:
+        return _PLACEHOLDER_RE.sub(
+            lambda m: os.environ.get(m.group(1), ""), obj
+        )
+    return obj
+
+
+def _apply_env_overrides(cfg):
+    """
+    Replace ${VAR} placeholders and apply environment variable overrides.
+
+    settings.yaml uses ${VAR} placeholders for environment-specific values.
+    Actual values are set in .env (loaded via dotenv at startup).
+
+    Supported env vars:
+        HSM_IP           → apps.e_admin.connection.ip + health_check.checks[].host
+        HSM_PORT         → apps.e_admin.connection.port + health_check tcp check port
+        E_ADMIN_PATH     → apps.e_admin.path
+        PUSHGATEWAY_URL  → metrics.pushgateway_url
+        TCMS_API_URL     → kiwi_tcms.url
+        KIWI_PLAN_ID     → kiwi_tcms.plan_id  (only for --kiwi-create-run)
+        KIWI_BUILD_ID    → kiwi_tcms.build_id (only for --kiwi-create-run)
+    """
+    hsm_ip = os.environ.get("HSM_IP", "").strip()
+    hsm_port = os.environ.get("HSM_PORT", "").strip()
+    e_admin_path = os.environ.get("E_ADMIN_PATH", "").strip()
+    pushgateway_url = os.environ.get("PUSHGATEWAY_URL", "").strip()
+    tcms_api_url = os.environ.get("TCMS_API_URL", "").strip()
+    kiwi_plan_id = os.environ.get("KIWI_PLAN_ID", "").strip()
+    kiwi_build_id = os.environ.get("KIWI_BUILD_ID", "").strip()
+
+    # --- E-Admin connection ---
+    e_admin = cfg.setdefault("apps", {}).setdefault("e_admin", {})
+    conn = e_admin.setdefault("connection", {})
+    if hsm_ip:
+        conn["ip"] = hsm_ip
+    if hsm_port:
+        conn["port"] = hsm_port
+    if e_admin_path:
+        e_admin["path"] = e_admin_path
+
+    # --- Health check hosts/ports ---
+    checks = cfg.get("health_check", {}).get("checks", [])
+    for check in checks:
+        if hsm_ip:
+            check["host"] = hsm_ip
+        if hsm_port and check.get("type") == "tcp":
+            check["port"] = int(hsm_port)
+
+    # --- Pushgateway ---
+    if pushgateway_url:
+        cfg.setdefault("metrics", {})["pushgateway_url"] = pushgateway_url
+
+    # --- Kiwi TCMS ---
+    kiwi = cfg.setdefault("kiwi_tcms", {})
+    if tcms_api_url:
+        kiwi["url"] = tcms_api_url
+    if kiwi_plan_id:
+        kiwi["plan_id"] = int(kiwi_plan_id)
+    if kiwi_build_id:
+        kiwi["build_id"] = int(kiwi_build_id)
 
 
 # ===========================================================================
@@ -165,7 +248,6 @@ def pytest_configure(config):
         from hsm_test_framework.kiwi_tcms import KiwiReporter
         reporter = KiwiReporter(
             url=tcms_config.get("url"),
-            product=tcms_config.get("product"),
             plan_id=plan_id_override or tcms_config.get("plan_id"),
             build_id=tcms_config.get("build_id"),
             status_ids=tcms_config.get("status_ids"),
@@ -217,7 +299,14 @@ def pytest_sessionstart(session):
     session.results = []
     logger.info("=" * 60)
     logger.info("HSM Test Framework - Session Started")
-    logger.info(f"Platform: {platform.system()} {platform.release()}")
+    # Detect Windows 11 (build >= 22000, still reports as NT 10.0)
+    os_name = platform.system()
+    os_ver = platform.release()
+    if os_name == "Windows" and os_ver == "10":
+        build = int(platform.version().split(".")[-1])
+        if build >= 22000:
+            os_ver = "11"
+    logger.info(f"Platform: {os_name} {os_ver}")
     logger.info(f"Timestamp: {datetime.datetime.now().isoformat()}")
     logger.info("=" * 60)
 
@@ -358,7 +447,7 @@ def pytest_sessionfinish(session, exitstatus):
         cfg.setdefault("kiwi_tcms", {})["plan_id"] = plan_id_override
 
     _push_to_kiwi(results, cfg, config=session.config)
-    _push_metrics(results, duration, cfg)
+    _push_metrics(results, duration, cfg, config=session.config)
 
 
 # ===========================================================================
@@ -449,7 +538,6 @@ def _push_to_kiwi(results, cfg, config=None):
 
         reporter = KiwiReporter(
             url=tcms_config.get("url"),
-            product=tcms_config.get("product"),
             plan_id=tcms_config.get("plan_id"),
             build_id=tcms_config.get("build_id"),
             status_ids=tcms_config.get("status_ids"),
@@ -467,7 +555,6 @@ def _push_to_kiwi(results, cfg, config=None):
                 status=result["status"],
                 comment=result.get("error", ""),
                 duration=result.get("duration", 0),
-                evidence_dir=result.get("evidence_dir"),
             )
 
         reporter.finalize()
@@ -493,7 +580,7 @@ def _push_to_kiwi_bidirectional(results, reporter, config=None):
                     status=result["status"],
                     comment=result.get("error", ""),
                     duration=result.get("duration", 0),
-                    evidence_dir=result.get("evidence_dir"),
+                    nodeid=result.get("nodeid"),
                 )
 
         # 2. Mark unmatched TCMS cases as BLOCKED
@@ -518,7 +605,7 @@ def _push_to_kiwi_bidirectional(results, reporter, config=None):
         logger.warning(f"Kiwi TCMS bidirectional reporting failed: {e}")
 
 
-def _push_metrics(results, session_duration, cfg):
+def _push_metrics(results, session_duration, cfg, config=None):
     """Push metrics to Prometheus/Grafana if enabled."""
     metrics_config = cfg.get("metrics", {})
     if not metrics_config.get("enabled"):
@@ -536,6 +623,12 @@ def _push_metrics(results, session_duration, cfg):
         total = len(results)
         passed = sum(1 for r in results if r["status"] == "PASSED")
 
+        # Count blocked cases from Kiwi bidirectional mode
+        blocked = 0
+        if config:
+            unmatched = getattr(config, "_kiwi_unmatched_cases", [])
+            blocked = len(unmatched)
+
         for result in results:
             pusher.record_test(
                 test_name=result["name"],
@@ -543,7 +636,8 @@ def _push_metrics(results, session_duration, cfg):
                 duration=result.get("duration", 0),
             )
 
-        pusher.record_suite("hsm", total, passed, session_duration)
+        pusher.record_suite("hsm", total, passed, session_duration,
+                            blocked=blocked)
         pusher.push()
     except Exception as e:
         logger.warning(f"Metrics push failed: {e}")

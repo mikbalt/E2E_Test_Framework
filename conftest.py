@@ -1,7 +1,9 @@
 # conftest.py - Root conftest for this repository's own sample tests.
 #
-# The heavy lifting (hooks, fixtures, TCMS, Grafana) is handled by the
-# hsm_test_framework.plugin module, which is auto-registered via pytest11.
+# Intentionally minimal: all hooks and fixtures live in
+# hsm_test_framework.plugin, auto-registered via the pytest11 entry point.
+# This file exists so IDEs discover the project as a pytest root and to
+# prevent "no conftest.py found" warnings.
 #
 # Consumer repos do NOT need to copy this file. They only need:
 #   pip install git+<gitlab-url>/hsm-test-framework.git

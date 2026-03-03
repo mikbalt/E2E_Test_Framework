@@ -36,7 +36,7 @@ When a consumer repo installs this framework, these fixtures are **automatically
 
 | File | Purpose |
 |------|---------|
-| `tests/ui/e-admin.py` | **E-Admin connection test** — uses `tracked_step`, modular fixtures, explicit waits, rich Allure decorators. Reference implementation for UI tests. |
+| `tests/ui/test_e_admin.py` | **E-Admin connection test** — uses `tracked_step`, modular fixtures, explicit waits, rich Allure decorators. Reference implementation for UI tests. |
 | `tests/ui/conftest.py` | UI-specific fixtures (`e_admin_driver`, `e_admin_config`), COM init, auto-screenshot on failure hook. |
 | `tests/ui/test_sample_app.py` | Demo: opens Windows Calculator, clicks buttons, verifies result. |
 | `tests/console/test_pkcs11_sample.py` | Demo: runs PKCS#11 tools (native, Go, Java, C++). Cross-platform with `resolve_platform_config()`. |
@@ -471,7 +471,7 @@ Logs are configured with `--color=no` in `pyproject.toml` to ensure clean output
 E-Admin UI Test - Connection and Dashboard Verification
 
 Run:
-    pytest tests/ui/e-admin.py -v
+    pytest tests/ui/test_e_admin.py -v
     pytest -m "smoke and e_admin" -v
 """
 import logging

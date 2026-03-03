@@ -64,7 +64,14 @@ class MetricsPusher:
 
             self.suite_pass_rate = Gauge(
                 "hsm_suite_pass_rate",
-                "Test suite pass rate (0-1)",
+                "Pass rate of executed tests: passed/(passed+failed)",
+                ["suite"],
+                registry=self.registry,
+            )
+
+            self.suite_coverage = Gauge(
+                "hsm_suite_coverage",
+                "Automation coverage: (passed+failed)/(total including blocked)",
                 ["suite"],
                 registry=self.registry,
             )
@@ -79,6 +86,34 @@ class MetricsPusher:
             self.last_run_timestamp = Gauge(
                 "hsm_last_run_timestamp",
                 "Timestamp of last test run",
+                ["suite"],
+                registry=self.registry,
+            )
+
+            self.suite_total = Gauge(
+                "hsm_suite_total",
+                "Total test cases in suite (including blocked)",
+                ["suite"],
+                registry=self.registry,
+            )
+
+            self.suite_passed = Gauge(
+                "hsm_suite_passed",
+                "Number of passed tests",
+                ["suite"],
+                registry=self.registry,
+            )
+
+            self.suite_failed = Gauge(
+                "hsm_suite_failed",
+                "Number of failed tests",
+                ["suite"],
+                registry=self.registry,
+            )
+
+            self.suite_blocked = Gauge(
+                "hsm_suite_blocked",
+                "Number of blocked test cases (no automation)",
                 ["suite"],
                 registry=self.registry,
             )
@@ -101,15 +136,25 @@ class MetricsPusher:
 
         self.test_duration.labels(suite=suite, test_name=test_name).observe(duration)
 
-    def record_suite(self, suite, total, passed, duration):
+    def record_suite(self, suite, total, passed, duration, blocked=0):
         """Record suite-level metrics."""
         if not self.registry:
             return
 
-        pass_rate = passed / total if total > 0 else 0
+        failed = total - passed
+        grand_total = total + blocked
+        executed = passed + failed
+        pass_rate = passed / executed if executed > 0 else 0
+        coverage = executed / grand_total if grand_total > 0 else 0
+
         self.suite_pass_rate.labels(suite=suite).set(pass_rate)
+        self.suite_coverage.labels(suite=suite).set(coverage)
         self.suite_duration.labels(suite=suite).set(duration)
         self.last_run_timestamp.labels(suite=suite).set(time.time())
+        self.suite_total.labels(suite=suite).set(grand_total)
+        self.suite_passed.labels(suite=suite).set(passed)
+        self.suite_failed.labels(suite=suite).set(failed)
+        self.suite_blocked.labels(suite=suite).set(blocked)
 
     def push(self):
         """Push all metrics to Pushgateway."""

@@ -54,6 +54,8 @@ class UIDriver:
     def start(self):
         """Launch the application and connect to its main window."""
         from pywinauto import Application
+        from pywinauto.application import AppNotConnected, ProcessNotFoundError
+        from pywinauto.timings import TimeoutError as PywinautoTimeout
 
         logger.info(f"Starting application: {self.app_path} (backend={self.backend}, work_dir={self.work_dir})")
 
@@ -61,9 +63,9 @@ class UIDriver:
             self.app = Application(backend=self.backend).start(
                 self.app_path, timeout=30, work_dir=self.work_dir
             )
-        except Exception:
+        except (AppNotConnected, ProcessNotFoundError, PywinautoTimeout) as e:
             # Fallback: try launching via subprocess then connecting
-            logger.warning("Direct start failed, trying subprocess + connect...")
+            logger.warning(f"Direct start failed ({type(e).__name__}), trying subprocess + connect...")
             subprocess.Popen(self.app_path, shell=True, cwd=self.work_dir)
             time.sleep(self.startup_wait)
             connect_kwargs = {}
@@ -116,6 +118,21 @@ class UIDriver:
 
         self.main_window.wait("visible", timeout=15)
 
+    def _active_window(self):
+        """Return the topmost active window (popup-aware).
+
+        If a popup/dialog sits on top of main_window, return that instead.
+        This allows click_button(), type_text(), wait_for_element(), etc.
+        to work transparently on popups without callers needing to know.
+        """
+        try:
+            top = self.app.top_window()
+            if top.handle != self.main_window.handle:
+                return top
+        except Exception:
+            pass
+        return self.main_window
+
     def refresh_window(self):
         """
         Re-detect the main window. Call this after actions that change
@@ -150,7 +167,7 @@ class UIDriver:
         criteria["found_index"] = found_index
 
         logger.info(f"Clicking button: {name or auto_id}")
-        btn = self.main_window.child_window(**criteria)
+        btn = self._active_window().child_window(**criteria)
         btn.wait("visible", timeout=10)
         btn.click_input()
         time.sleep(0.3)
@@ -158,7 +175,7 @@ class UIDriver:
     def click_element(self, **kwargs):
         """Click any UI element by flexible criteria."""
         logger.info(f"Clicking element: {kwargs}")
-        elem = self.main_window.child_window(**kwargs)
+        elem = self._active_window().child_window(**kwargs)
         elem.wait("visible", timeout=10)
         elem.click_input()
         time.sleep(0.3)
@@ -172,7 +189,7 @@ class UIDriver:
             criteria["title"] = name
 
         logger.info(f"Typing into {auto_id or name}: '{text}'")
-        field = self.main_window.child_window(**criteria)
+        field = self._active_window().child_window(**criteria)
         field.wait("visible", timeout=10)
         field.set_text(text)
 
@@ -186,18 +203,18 @@ class UIDriver:
         if control_type:
             criteria["control_type"] = control_type
 
-        elem = self.main_window.child_window(**criteria)
+        elem = self._active_window().child_window(**criteria)
         return elem.window_text()
 
     def select_menu(self, *menu_path):
         """Navigate menu items. e.g., select_menu('File', 'Open')."""
         logger.info(f"Selecting menu: {' > '.join(menu_path)}")
-        self.main_window.menu_select(" -> ".join(menu_path))
+        self._active_window().menu_select(" -> ".join(menu_path))
 
     def select_tab(self, tab_name):
         """Select a tab by name."""
         logger.info(f"Selecting tab: {tab_name}")
-        tab = self.main_window.child_window(title=tab_name, control_type="TabItem")
+        tab = self._active_window().child_window(title=tab_name, control_type="TabItem")
         tab.click_input()
         time.sleep(0.3)
 
@@ -210,19 +227,19 @@ class UIDriver:
             criteria["title"] = name
 
         logger.info(f"Selecting combobox {name or auto_id} -> {value}")
-        combo = self.main_window.child_window(**criteria)
+        combo = self._active_window().child_window(**criteria)
         combo.select(value)
 
     def wait_for_element(self, timeout=10, **kwargs):
         """Wait until an element becomes visible."""
-        elem = self.main_window.child_window(**kwargs)
+        elem = self._active_window().child_window(**kwargs)
         elem.wait("visible", timeout=timeout)
         return elem
 
     def element_exists(self, **kwargs):
         """Check if an element exists (without waiting)."""
         try:
-            elem = self.main_window.child_window(**kwargs)
+            elem = self._active_window().child_window(**kwargs)
             return elem.exists(timeout=1)
         except Exception:
             return False
