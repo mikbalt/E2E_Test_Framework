@@ -12,6 +12,7 @@ apps:
     class_name: "WindowsForms10\\.Window.*"  # WinForms app (title kosong)
     startup_wait: 5                # Seconds to wait after launch
     backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
+    app_logs_dir: "${E_ADMIN_APP_LOGS}" # App logs dir — collected + zipped after each test
     connection:
       ip: "${HSM_IP}"                # Required — set in .env
       port: "${HSM_PORT}"           # Required — set in .env
@@ -100,6 +101,7 @@ metrics:
   enabled: false                  # Set true after Prometheus Pushgateway is ready
   pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
   job_name: "E2E_Sphere_HSM"
+  # run_id: Auto-generated per session (override with --run-id CLI flag)
   labels:
     environment: "staging"
     team: "security"

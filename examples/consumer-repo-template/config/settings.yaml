@@ -10,6 +10,7 @@ apps:
     title: "My Application*"
     startup_wait: 5
     backend: "uia"
+    app_logs_dir: "${MY_APP_LOGS}"   # Optional — collected + zipped after each test
 
 console_tools:
   my_tool:

@@ -133,6 +133,9 @@ def _apply_env_overrides(cfg):
         conn["port"] = hsm_port
     if e_admin_path:
         e_admin["path"] = e_admin_path
+    e_admin_app_logs = os.environ.get("E_ADMIN_APP_LOGS", "").strip()
+    if e_admin_app_logs:
+        e_admin["app_logs_dir"] = e_admin_app_logs
 
     # --- Health check hosts/ports ---
     checks = cfg.get("health_check", {}).get("checks", [])
@@ -199,6 +202,14 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Force create a new Kiwi TCMS test run (explicit opt-in).",
+    )
+
+    # Metrics Run ID
+    group.addoption(
+        "--run-id",
+        type=str,
+        default=None,
+        help="Unique run ID for metrics isolation. Auto-generated if not provided.",
     )
 
 
@@ -297,8 +308,16 @@ def pytest_sessionstart(session):
     """Called after session is created, before test collection."""
     session.start_time = time.time()
     session.results = []
+
+    # Generate or use provided run_id for metrics isolation
+    run_id = session.config.getoption("--run-id", default=None)
+    if not run_id:
+        run_id = datetime.datetime.now().strftime("run_%Y%m%d_%H%M%S")
+    session.config._run_id = run_id
+
     logger.info("=" * 60)
     logger.info("HSM Test Framework - Session Started")
+    logger.info(f"Run ID: {run_id}")
     # Detect Windows 11 (build >= 22000, still reports as NT 10.0)
     os_name = platform.system()
     os_ver = platform.release()
@@ -614,10 +633,12 @@ def _push_metrics(results, session_duration, cfg, config=None):
     try:
         from hsm_test_framework.grafana_push import MetricsPusher
 
+        run_id = getattr(config, "_run_id", None) if config else None
         pusher = MetricsPusher(
             pushgateway_url=metrics_config.get("pushgateway_url"),
             job_name=metrics_config.get("job_name", "hsm_tests"),
             labels=metrics_config.get("labels", {}),
+            run_id=run_id,
         )
 
         total = len(results)

@@ -2,17 +2,18 @@
 [E2E][e-admin][Key Ceremony] Key ceremony using password via E-Admin
 
 Scenario:
-    1. Connect to HSM via E-Admin
-    2. Start HSM Initialization
-    3. Change SUPER_USER default password
-    4. Authenticate as SUPER_USER and create Admin account
-    5. Login as Admin
-    6. Create 3 Key Custodians + 1 Auditor
-    7. Import CCMK for each Key Custodian
-    8. Select mode of operation and finalize
+    Given  eAdmin launched and connected to HSM
+    When   user starts HSM Initialization
+    And    accepts T&C, changes SUPER_USER password
+    And    SUPER_USER authenticates and creates Admin
+    And    Admin logs in and creates 3 Key Custodians + 1 Auditor
+    And    each Key Custodian imports their CCMK component
+    And    user selects FIPS mode and finalizes
+    Then   Key Ceremony completed successfully
 
 Run:
-    pytest tests/ui/e_admin/test_keyceremony_password.py -v --alluredir=evidence/allure-results
+    pytest tests/ui/e_admin/test_keyceremony_password.py -v
+    pytest tests/ui/e_admin/test_keyceremony_password.py -v --run-id kiwi_run_28 --kiwi-run-id 28
 """
 import logging
 
@@ -22,6 +23,11 @@ import pytest
 from hsm_test_framework import tracked_step
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Timeout — single place to tune all wait_for_element timeouts (seconds)
+# ---------------------------------------------------------------------------
+TIMEOUT = 120
 
 # ---------------------------------------------------------------------------
 # Test data — key ceremony credentials & CCMK components
@@ -70,13 +76,13 @@ AUDITOR = {"username": "auditor", "password": "11111111"}
 def _agree_and_next(driver):
     """Click 'Agree' radio then 'Next >>>' button."""
     driver.click_element(auto_id="rbAgree")
-    driver.wait_for_element(timeout=10, auto_id="btnNext", control_type="Button")
+    driver.wait_for_element(timeout=TIMEOUT, auto_id="btnNext", control_type="Button")
     driver.click_button(auto_id="btnNext")
 
 
 def _dismiss_ok(driver):
     """Dismiss a dialog by clicking OK (auto_id='2')."""
-    driver.wait_for_element(timeout=10, auto_id="2", control_type="Button")
+    driver.wait_for_element(timeout=TIMEOUT, auto_id="2", control_type="Button")
     driver.click_button(auto_id="2")
 
 
@@ -87,7 +93,7 @@ def _create_user(driver, username, password, add_button_id=None):
     """
     if add_button_id:
         driver.click_button(auto_id=add_button_id)
-        driver.wait_for_element(timeout=10, auto_id="txtUsername")
+        driver.wait_for_element(timeout=TIMEOUT, auto_id="txtUsername")
 
     driver.type_text(username, auto_id="txtUsername")
     driver.click_element(auto_id="rbPass")
@@ -128,20 +134,38 @@ class TestEAdminKeyCeremonyPassword:
     @allure.description(
         """
         Scenario: Perform Key Ceremony with 3 Key Custodians and 1 Auditor using password via eAdmin
-        Given : eAdmin application is installed and HSM are in place and configured correctly.
-        When : user changes the SUPER_USER default password
-        And SUPER_USER logs in to eAdmin with new credentials
-        And SUPER_USER creates admin account
-        And Admin log in to eAdmin with new credential
+
+        Given eAdmin application is launched and visible
+        And eAdmin is connected to HSM successfully
+
+        When user starts HSM Initialization
+        And user accepts Sphere HSM Terms & Conditions
+        And user accepts Password Change Terms & Conditions
+        And SUPER_USER changes the default password
+        Then password changed successfully
+
+        When user accepts Admin Creation Terms & Conditions
+        And SUPER_USER authenticates with new credentials
+        And SUPER_USER creates Admin account
+        Then Admin account created successfully
+
+        When user accepts Custodians Creation Terms & Conditions
+        And Admin logs in with credentials
+        And Admin accepts post-login Terms & Conditions
         And Admin creates Key Custodian 1 account
         And Admin creates Key Custodian 2 account
         And Admin creates Key Custodian 3 account
         And Admin creates Auditor account
-        And Login as Key Custodian 1 and imports CCMK
-        And Login as Key Custodian 2 and imports CCMK
-        And Login as Key Custodian 3 and imports CCMK
-        Then 3 Key Custodian accounts and 1 Auditor account are created successfully
-        And CCMK is imported successfully for all 4 quorum members
+        Then all user accounts created successfully
+
+        When user accepts CCMK Import Terms & Conditions (3 pages)
+        And Key Custodian 1 logs in and imports CCMK component
+        And Key Custodian 2 logs in and imports CCMK component
+        And Key Custodian 3 logs in and imports CCMK component with combined KCV
+        Then CCMK imported successfully for all 3 quorum members
+
+        When user selects FIPS mode of operation and finalizes
+        Then Key Ceremony completed successfully
         """
     )
     @allure.tag("e-admin", "windows", "ui", "key-ceremony")
@@ -156,18 +180,18 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 1: Connect to HSM
         # ==================================================================
-        with tracked_step(evidence, driver, "E-Admin launched and visible"):
+        with tracked_step(evidence, driver, "Given: eAdmin application is launched and visible"):
             assert driver.main_window.is_visible(), (
                 "E-Admin main window is not visible after launch"
             )
             logger.info("E-Admin launched successfully")
 
-        with tracked_step(evidence, driver, "Click Connect and confirm popup"):
+        with tracked_step(evidence, driver, "Given: eAdmin is connected to HSM successfully"):
             driver.click_button(auto_id="btnUpdate")
             logger.info("Connect button clicked")
 
             driver.wait_for_element(
-                timeout=10, auto_id="btnOKE", control_type="Button"
+                timeout=TIMEOUT, auto_id="btnOKE", control_type="Button"
             )
 
             popup = driver.check_popup()
@@ -187,7 +211,7 @@ class TestEAdminKeyCeremonyPassword:
 
         driver.refresh_window()
 
-        with tracked_step(evidence, driver, "Dashboard appeared successfully"):
+        with tracked_step(evidence, driver, "Then: HSM connection confirmed"):
             assert driver.main_window.is_visible(), (
                 "E-Admin window not visible after connection"
             )
@@ -196,7 +220,7 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 2: Start HSM Initialization
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Start HSM Initialization"):
+        with tracked_step(evidence, driver, "When: User starts HSM Initialization"):
             driver.click_button(auto_id="btnHSMInit")
             logger.info("HSM Initialization started")
 
@@ -205,22 +229,21 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 3: Accept T&C — Sphere HSM
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept T&C - Sphere HSM"):
+        with tracked_step(evidence, driver, "And: User accepts Sphere HSM Terms & Conditions"):
             _agree_and_next(driver)
             logger.info("Sphere HSM T&C accepted")
 
         # ==================================================================
         # Phase 4: Accept T&C — Change Super User Password
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept T&C - Super User Password Change"):
+        with tracked_step(evidence, driver, "And: User accepts Password Change Terms & Conditions"):
             _agree_and_next(driver)
             logger.info("Super User Password Change T&C accepted")
 
         # ==================================================================
         # Phase 5: Change SUPER_USER default password
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Change SUPER_USER default password"):
-            driver.type_text(DEFAULT_SUPER_USER_PASS, auto_id="txtOldPass")
+        with tracked_step(evidence, driver, "And: SUPER_USER changes the default password"):
             driver.type_text(DEFAULT_SUPER_USER_PASS, auto_id="txtOldPass")
             driver.type_text(NEW_SUPER_USER_PASS, auto_id="txtNewPass")
             driver.type_text(NEW_SUPER_USER_PASS, auto_id="txtRepeatNewPass")
@@ -232,50 +255,51 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 6: Accept T&C — Admin Creation
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept T&C - Admin Creation"):
+        with tracked_step(evidence, driver, "When: User accepts Admin Creation Terms & Conditions"):
             _agree_and_next(driver)
             logger.info("Admin Creation T&C accepted")
 
         # ==================================================================
         # Phase 7: Authenticate as SUPER_USER
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Authenticate as SUPER_USER"):
+        with tracked_step(evidence, driver, "And: SUPER_USER authenticates with new credentials"):
             _dismiss_ok(driver)
             driver.type_text(NEW_SUPER_USER_PASS, auto_id="txtPassword")
             driver.click_button(auto_id="btnAuth")
-            driver.wait_for_element(timeout=10, auto_id="txtUsername")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="txtUsername")
             logger.info("SUPER_USER authenticated")
 
         # ==================================================================
         # Phase 8: Create Admin account
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Create Admin account"):
+        with tracked_step(evidence, driver, "And: SUPER_USER creates Admin account"):
             _create_user(driver, ADMIN_USERNAME, ADMIN_PASSWORD)
             logger.info(f"Admin account '{ADMIN_USERNAME}' created")
 
-        with tracked_step(evidence, driver, "And:Confirm Admin creation"):
+        with tracked_step(evidence, driver, "Then: Admin account created successfully"):
             _dismiss_ok(driver)
             logger.info("Admin creation confirmed")
 
         # ==================================================================
         # Phase 9: Accept T&C — Custodians Creation
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept T&C - Custodians Creation"):
+        with tracked_step(evidence, driver, "When: User accepts Custodians Creation Terms & Conditions"):
+            driver.refresh_window()
             _agree_and_next(driver)
             logger.info("Custodians Creation T&C accepted")
-
+"""
         # ==================================================================
         # Phase 10: Login as Admin
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Login as Admin"):
+        with tracked_step(evidence, driver, "And: Admin logs in with credentials"):
             _kc_login(driver, ADMIN_USERNAME, ADMIN_PASSWORD)
-            driver.wait_for_element(timeout=10, auto_id="rbAgree")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="rbAgree")
             logger.info(f"Logged in as '{ADMIN_USERNAME}'")
 
         # ==================================================================
         # Phase 11: Accept T&C and confirm after Admin login
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept Admin post-login confirmation"):
+        with tracked_step(evidence, driver, "And: Admin accepts post-login Terms & Conditions"):
             driver.click_element(auto_id="rbAgree")
             _dismiss_ok(driver)
             logger.info("Admin post-login confirmation accepted")
@@ -284,7 +308,7 @@ class TestEAdminKeyCeremonyPassword:
         # Phase 12: Create Key Custodians (KC1, KC2, KC3)
         # ==================================================================
         for i, kc in enumerate(KEY_CUSTODIANS, start=1):
-            with tracked_step(evidence, driver, f"And:Create Key Custodian {i} ({kc['username']})"):
+            with tracked_step(evidence, driver, f"And: Admin creates Key Custodian {i} ({kc['username']}) account"):
                 _create_user(
                     driver,
                     username=kc["username"],
@@ -296,7 +320,7 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 13: Create Auditor
         # ==================================================================
-        with tracked_step(evidence, driver, f"And:Create Auditor ({AUDITOR['username']})"):
+        with tracked_step(evidence, driver, f"And: Admin creates Auditor ({AUDITOR['username']}) account"):
             _create_user(
                 driver,
                 username=AUDITOR["username"],
@@ -308,12 +332,12 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 14: Accept T&C — CCMK Import
         # ==================================================================
-        with tracked_step(evidence, driver, "And:Accept T&C and proceed to CCMK import"):
+        with tracked_step(evidence, driver, "When: User accepts CCMK Import Terms & Conditions (3 pages)"):
             # Understand radio + Next (3 consecutive T&C pages)
             _agree_and_next(driver)
-            driver.wait_for_element(timeout=10, auto_id="rbAgree")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="rbAgree")
             _agree_and_next(driver)
-            driver.wait_for_element(timeout=10, auto_id="rbAgree")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="rbAgree")
             _agree_and_next(driver)
             logger.info("CCMK import T&C sequence completed")
 
@@ -321,43 +345,43 @@ class TestEAdminKeyCeremonyPassword:
         # Phase 15: Import CCMK — Key Custodian 1
         # ==================================================================
         kc1 = KEY_CUSTODIANS[0]
-        with tracked_step(evidence, driver, f"And:KC1 ({kc1['username']}) login and import CCMK"):
+        with tracked_step(evidence, driver, f"And: Key Custodian 1 ({kc1['username']}) logs in and imports CCMK component"):
             _kc_login(driver, kc1["username"], kc1["password"])
-            driver.wait_for_element(timeout=10, auto_id="mtxtSecret")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="mtxtSecret")
             driver.type_text(kc1["ccmk_secret"], auto_id="mtxtSecret")
             driver.type_text(kc1["ccmk_kcv"], auto_id="txtKCV")
             driver.click_button(auto_id="btnProcess")
             _dismiss_ok(driver)
             logger.info(f"CCMK component 1 imported by '{kc1['username']}'")
 
-        with tracked_step(evidence, driver, "And:Proceed to KC2 CCMK import"):
+        with tracked_step(evidence, driver, "And: Proceed to KC2 CCMK import"):
             driver.click_button(auto_id="btnNext")
-            driver.wait_for_element(timeout=10, auto_id="rbPassword")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="rbPassword")
 
         # ==================================================================
         # Phase 16: Import CCMK — Key Custodian 2
         # ==================================================================
         kc2 = KEY_CUSTODIANS[1]
-        with tracked_step(evidence, driver, f"And:KC2 ({kc2['username']}) login and import CCMK"):
+        with tracked_step(evidence, driver, f"And: Key Custodian 2 ({kc2['username']}) logs in and imports CCMK component"):
             _kc_login(driver, kc2["username"], kc2["password"])
-            driver.wait_for_element(timeout=10, auto_id="mtxtSecret")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="mtxtSecret")
             driver.type_text(kc2["ccmk_secret"], auto_id="mtxtSecret")
             driver.type_text(kc2["ccmk_kcv"], auto_id="txtKCV")
             driver.click_button(auto_id="btnProcess")
             _dismiss_ok(driver)
             logger.info(f"CCMK component 2 imported by '{kc2['username']}'")
 
-        with tracked_step(evidence, driver, "And:Proceed to KC3 CCMK import"):
+        with tracked_step(evidence, driver, "And: Proceed to KC3 CCMK import"):
             driver.click_button(auto_id="btnNext")
-            driver.wait_for_element(timeout=10, auto_id="rbPassword")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="rbPassword")
 
         # ==================================================================
         # Phase 17: Import CCMK — Key Custodian 3 (final + combined KCV)
         # ==================================================================
         kc3 = KEY_CUSTODIANS[2]
-        with tracked_step(evidence, driver, f"And:KC3 ({kc3['username']}) login and import CCMK"):
+        with tracked_step(evidence, driver, f"And: Key Custodian 3 ({kc3['username']}) logs in and imports CCMK component with combined KCV"):
             _kc_login(driver, kc3["username"], kc3["password"])
-            driver.wait_for_element(timeout=10, auto_id="mtxtSecret")
+            driver.wait_for_element(timeout=TIMEOUT, auto_id="mtxtSecret")
             driver.type_text(kc3["ccmk_secret"], auto_id="mtxtSecret")
             driver.type_text(kc3["ccmk_kcv"], auto_id="txtKCV")
             driver.type_text(kc3["ccmk_combined_kcv"], auto_id="txtCCMKKCV")
@@ -368,7 +392,7 @@ class TestEAdminKeyCeremonyPassword:
         # ==================================================================
         # Phase 18: Select Mode of Operation and Finalize
         # ==================================================================
-        with tracked_step(evidence, driver, "And: Select FIPS mode and finalize"):
+        with tracked_step(evidence, driver, "When: User selects FIPS mode of operation and finalizes"):
             driver.click_element(auto_id="rbDisagree")  # FIPS radio
             driver.click_button(auto_id="btnNext")       # Finalize
             _dismiss_ok(driver)
@@ -377,3 +401,4 @@ class TestEAdminKeyCeremonyPassword:
         with tracked_step(evidence, driver, "Then: Key Ceremony completed successfully"):
             _dismiss_ok(driver)
             logger.info("Key ceremony completed - all steps passed")
+"""

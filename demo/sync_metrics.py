@@ -82,7 +82,7 @@ def fetch_run_results(reporter, run_id):
     return results, details
 
 
-def push_metrics(results, duration=0):
+def push_metrics(results, duration=0, run_id=None):
     """Push results to Pushgateway."""
     from hsm_test_framework.plugin import load_config
 
@@ -98,6 +98,7 @@ def push_metrics(results, duration=0):
         pushgateway_url=metrics_config.get("pushgateway_url"),
         job_name=metrics_config.get("job_name", "hsm_tests"),
         labels=metrics_config.get("labels", {}),
+        run_id=run_id,
     )
 
     total_executed = results["PASSED"] + results["FAILED"]
@@ -115,7 +116,7 @@ def push_metrics(results, duration=0):
     return True
 
 
-def sync_once(reporter, run_id):
+def sync_once(reporter, run_id, metrics_run_id=None):
     """Perform a single sync: Kiwi → Grafana."""
     timestamp = time.strftime("%H:%M:%S")
 
@@ -133,7 +134,7 @@ def sync_once(reporter, run_id):
         icon = {"PASSED": "+", "FAILED": "x", "BLOCKED": "!", "OTHER": "?"}
         print(f"  [{icon.get(d['status'], '?')}] {d['summary']}")
 
-    if push_metrics(results):
+    if push_metrics(results, run_id=metrics_run_id):
         print(f"[{timestamp}] Metrics pushed to Pushgateway")
     else:
         print(f"[{timestamp}] Metrics push skipped")
@@ -154,6 +155,10 @@ def main():
     parser.add_argument(
         "--interval", type=int, default=30,
         help="Sync interval in seconds (default: 30, used with --watch)",
+    )
+    parser.add_argument(
+        "--metrics-run-id", type=str, default=None,
+        help="Unique run ID for metrics isolation. Auto-generated if not provided.",
     )
     args = parser.parse_args()
 
@@ -191,13 +196,13 @@ def main():
         print(f"Watch mode: syncing every {args.interval}s (Ctrl+C to stop)\n")
         try:
             while True:
-                sync_once(reporter, run_id)
+                sync_once(reporter, run_id, metrics_run_id=args.metrics_run_id)
                 print()
                 time.sleep(args.interval)
         except KeyboardInterrupt:
             print("\nStopped.")
     else:
-        sync_once(reporter, run_id)
+        sync_once(reporter, run_id, metrics_run_id=args.metrics_run_id)
 
     reporter.finalize()
 

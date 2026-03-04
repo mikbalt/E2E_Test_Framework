@@ -906,6 +906,118 @@ class TestPKCS11:
 
 ---
 
+## Grafana Metrics & Run Tracking (`--run-id`)
+
+Every test session pushes metrics to Prometheus Pushgateway for Grafana visualization. Each run is uniquely identified by a `run_id` label, so previous runs are **never overwritten** — all historical data is preserved.
+
+### How It Works
+
+```
+pytest tests/ --run-id sprint_42
+│
+├── All test files execute in one session
+├── Every test result recorded with run_id="sprint_42"
+├── Suite summary (pass rate, coverage, duration) tagged with run_id="sprint_42"
+└── pushadd_to_gateway → additive push (does NOT overwrite previous runs)
+
+In Grafana:
+  Dropdown "Test Run" → select "sprint_42" → see that run's results
+  Dropdown "Test Run" → select "All" → see all runs on trend charts
+```
+
+### Command Reference
+
+| Scenario | Command |
+|----------|---------|
+| All tests, auto-generated run_id | `pytest tests/ -v` |
+| All tests, named run_id | `pytest tests/ -v --run-id sprint_42` |
+| UI tests only | `pytest tests/ui/ -v --run-id ui_regression_01` |
+| Console tests only | `pytest tests/console/ -v --run-id pkcs11_check_01` |
+| By marker | `pytest -m smoke -v --run-id smoke_daily` |
+| Split runs, same run_id (results merge) | `pytest tests/ui/ --run-id sprint_42` then `pytest tests/console/ --run-id sprint_42` |
+
+### Combined with Kiwi TCMS Bidirectional
+
+`--run-id` and `--kiwi-run-id` work together — Kiwi handles test case management, Grafana handles metrics:
+
+```bash
+# Full bidirectional + metrics tracking
+pytest tests/ -v --kiwi-run-id 25 --run-id kiwi_run_25
+
+# With smoke gate
+pytest tests/ -v --kiwi-run-id 25 --run-id kiwi_run_25 --smoke-gate
+
+# With plan override
+pytest tests/ -v --kiwi-run-id 25 --kiwi-plan-id 50 --run-id kiwi_run_25
+```
+
+**What happens with `--kiwi-run-id 25 --run-id kiwi_run_25`:**
+
+| Step | Kiwi TCMS | Grafana |
+|------|-----------|---------|
+| Pull test cases from TestRun #25 | Filters to matched tests | — |
+| Execute matched tests | — | Records each test result |
+| Push PASSED/FAILED | Updates TCMS executions | — |
+| Mark unmatched → BLOCKED | Updates TCMS executions | Counted as `blocked` in metrics |
+| Push metrics | — | `pushadd_to_gateway(run_id="kiwi_run_25")` |
+
+**Tip:** Use the Kiwi run ID in the `--run-id` name (e.g. `kiwi_run_25`) so Grafana and TCMS are easy to cross-reference.
+
+### All CLI Flags Summary
+
+| Flag | Type | Default | Purpose |
+|------|------|---------|---------|
+| `--run-id` | `str` | Auto-generated (`run_YYYYMMDD_HHMMSS`) | Unique run ID for Grafana metrics isolation |
+| `--kiwi-run-id` | `int` | None | Kiwi TCMS TestRun ID for bidirectional sync |
+| `--kiwi-plan-id` | `int` | From settings.yaml | Override TCMS plan_id |
+| `--kiwi-create-run` | flag | False | Create a new TCMS TestRun and push results |
+| `--smoke-gate` | flag | False | Abort remaining tests if any smoke test fails |
+| `--skip-health-check` | flag | False | Skip pre-execution environment health checks |
+
+### Grafana Dashboard
+
+Import `config/grafana-dashboard.json` into Grafana. The dashboard includes:
+
+| Section | Panels | Filtered by run_id |
+|---------|--------|--------------------|
+| **Current Status** | Pass Rate gauge, Coverage gauge, Total/Passed/Failed/Blocked stats, Duration, Last Run, Coverage Breakdown pie chart | Yes — shows selected run |
+| **Historical Trends** | Test Results Over Time, Pass Rate & Coverage Over Time, Suite Duration Over Time, Individual Test Duration | Yes — legend shows `{{run_id}}` per series |
+
+The **"Test Run"** dropdown at the top lets you:
+- Select a specific run → Current Status panels show that run's data
+- Select "All" → Trend panels show all runs for comparison
+
+### Manual Metrics Sync (Kiwi → Grafana)
+
+Use `demo/sync_metrics.py` to push Kiwi TCMS results to Grafana without running pytest:
+
+```bash
+# One-shot sync
+python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25
+
+# Watch mode (sync every 30s)
+python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25 --watch
+
+# Custom interval
+python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25 --watch --interval 10
+```
+
+### Cleanup Old Runs
+
+To delete metrics for a specific run from Pushgateway:
+
+```python
+from hsm_test_framework.grafana_push import MetricsPusher
+
+pusher = MetricsPusher(
+    pushgateway_url="http://10.88.1.14:9091",
+    run_id="old_run_to_delete",
+)
+pusher.delete_run()
+```
+
+---
+
 ## PKCS#11 Consumer Repo Structure
 
 ```
