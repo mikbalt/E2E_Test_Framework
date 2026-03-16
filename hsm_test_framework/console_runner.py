@@ -36,7 +36,7 @@ def resolve_platform_config(tool_config):
     suffix = "windows" if IS_WINDOWS else "linux"
     resolved = dict(tool_config)
 
-    for key in ("command", "working_dir"):
+    for key in ("command", "working_dir", "log_path", "log_dir", "gtest_xml"):
         platform_key = f"{key}_{suffix}"
         if platform_key in tool_config:
             resolved[key] = tool_config[platform_key]

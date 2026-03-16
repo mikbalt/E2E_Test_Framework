@@ -25,6 +25,7 @@ Manual usage:
 """
 
 import base64
+import contextlib
 import datetime
 import html as html_mod
 import io
@@ -35,6 +36,20 @@ import zipfile
 import ssl
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _unverified_ssl():
+    """Temporarily disable SSL certificate verification (process-global).
+
+    Restores the original factory on exit, even if an exception occurs.
+    """
+    original = ssl._create_default_https_context
+    ssl._create_default_https_context = ssl._create_unverified_context
+    try:
+        yield
+    finally:
+        ssl._create_default_https_context = original
 
 
 # Default status IDs in Kiwi TCMS (default installation).
@@ -61,7 +76,7 @@ class KiwiReporter:
         self.test_run_id = None
         self.results = []
         self._category_id = None
-        self._original_ssl_ctx_factory = None
+        self._ssl_cm = None
 
     def connect(self):
         """Connect to Kiwi TCMS XML-RPC API."""
@@ -69,17 +84,11 @@ class KiwiReporter:
             from tcms_api import TCMS
 
             # WARNING: process-global SSL override.
-            # This disables certificate verification for ALL HTTPS connections
-            # in this process, not just Kiwi TCMS. Acceptable for the current
-            # single-threaded pytest use case, but must not be used in
-            # multi-threaded or production contexts.
-            # TODO: replace with per-transport SSL context when tcms_api supports it.
-            # Internal Kiwi instances commonly use self-signed certs;
-            # disabling verification only during TCMS() init is not enough
-            # because subsequent XML-RPC calls also open SSL connections.
-            # The original factory is restored in finalize().
-            self._original_ssl_ctx_factory = ssl._create_default_https_context
-            ssl._create_default_https_context = ssl._create_unverified_context
+            # Internal Kiwi instances commonly use self-signed certs.
+            # The context manager restores the original factory in finalize()
+            # or on crash.
+            self._ssl_cm = _unverified_ssl()
+            self._ssl_cm.__enter__()
             self.rpc = TCMS(self.url, self.username, self.password).exec
 
             logger.info(f"Connected to Kiwi TCMS: {self.url}")
@@ -89,6 +98,10 @@ class KiwiReporter:
 
             return True
         except Exception as e:
+            # Restore SSL on connect failure
+            if self._ssl_cm:
+                self._ssl_cm.__exit__(None, None, None)
+                self._ssl_cm = None
             logger.warning(f"Cannot connect to Kiwi TCMS: {e}")
             return False
 
@@ -167,7 +180,7 @@ class KiwiReporter:
             return None
 
     def report_result(self, test_name, status="PASSED", comment="",
-                      duration=0, nodeid=None):
+                      duration=0, nodeid=None, evidence_dir=None):
         """
         Report a single test result.
 
@@ -177,6 +190,7 @@ class KiwiReporter:
             comment: Additional comment/notes.
             duration: Test duration in seconds.
             nodeid: pytest nodeid used to find allure results for attachment.
+            evidence_dir: Path to the test's evidence directory (for zip attachments).
         """
         status_map = {
             "PASSED": self.status_ids["PASSED"],
@@ -221,14 +235,16 @@ class KiwiReporter:
 
                 # Attach evidence HTML from allure results
                 self._attach_evidence_files(
-                    execution_id, nodeid=nodeid, case_id=case_id
+                    execution_id, nodeid=nodeid, case_id=case_id,
+                    evidence_dir=evidence_dir,
                 )
 
             logger.info(f"Reported to TCMS: {test_name} = {status}")
         except Exception as e:
             logger.error(f"Failed to report result: {e}")
 
-    def _attach_evidence_files(self, execution_id, nodeid=None, case_id=None):
+    def _attach_evidence_files(self, execution_id, nodeid=None, case_id=None,
+                               evidence_dir=None):
         """Build evidence ZIP with HTML report + allure results and attach it.
 
         ZIP contents:
@@ -292,13 +308,25 @@ class KiwiReporter:
                 except (json.JSONDecodeError, OSError):
                     continue
 
+            # --- Collect evidence directory zips (AppLogs, RemoteLogs) ---
+            evidence_zips = {}  # {arcname: filepath}
+            if evidence_dir and os.path.isdir(evidence_dir):
+                for fname in os.listdir(evidence_dir):
+                    if fname.endswith(".zip"):
+                        evidence_zips[f"evidence/{fname}"] = os.path.join(
+                            evidence_dir, fname
+                        )
+
             # --- Build ZIP ---
             # Kiwi TCMS blocks raw HTML uploads (forbidden <body> tag).
-            # Wrap in a ZIP that includes the HTML + raw allure data.
+            # Wrap in a ZIP that includes the HTML + raw allure data +
+            # evidence zips (AppLogs, RemoteLogs).
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr("evidence_report.html", report_html.encode("utf-8"))
                 for arcname, filepath in allure_files.items():
+                    zf.write(filepath, arcname)
+                for arcname, filepath in evidence_zips.items():
                     zf.write(filepath, arcname)
             b64content = base64.b64encode(zip_buffer.getvalue()).decode("ascii")
 
@@ -307,7 +335,8 @@ class KiwiReporter:
             )
             logger.info(
                 f"Attached {zip_filename} to execution #{execution_id} "
-                f"({len(allure_files)} allure files included)"
+                f"({len(allure_files)} allure files, "
+                f"{len(evidence_zips)} evidence zips included)"
             )
         except Exception as e:
             logger.warning(f"Failed to attach evidence report: {e}")
@@ -455,7 +484,7 @@ class KiwiReporter:
             return []
 
     def report_result_by_case_id(self, case_id, status="PASSED", comment="",
-                                  duration=0, nodeid=None):
+                                  duration=0, nodeid=None, evidence_dir=None):
         """
         Report result for a specific case_id (bidirectional mode).
 
@@ -469,6 +498,7 @@ class KiwiReporter:
             comment: Additional comment/notes.
             duration: Test duration in seconds.
             nodeid: pytest nodeid used to find allure results for attachment.
+            evidence_dir: Path to the test's evidence directory (for zip attachments).
         """
         status_map = {
             "PASSED": self.status_ids["PASSED"],
@@ -500,9 +530,10 @@ class KiwiReporter:
                 })
                 if comment:
                     self.rpc.TestExecution.add_comment(execution_id, comment)
-                # Attach evidence HTML from allure results
+                # Attach evidence HTML + evidence zips from allure results
                 self._attach_evidence_files(
-                    execution_id, nodeid=nodeid, case_id=case_id
+                    execution_id, nodeid=nodeid, case_id=case_id,
+                    evidence_dir=evidence_dir,
                 )
 
                 logger.info(f"Reported to TCMS: case #{case_id} = {status}")
@@ -569,9 +600,9 @@ class KiwiReporter:
     def finalize(self):
         """Finalize and log summary. Restores original SSL context."""
         # Restore SSL verification disabled during connect()
-        if self._original_ssl_ctx_factory is not None:
-            ssl._create_default_https_context = self._original_ssl_ctx_factory
-            self._original_ssl_ctx_factory = None
+        if self._ssl_cm is not None:
+            self._ssl_cm.__exit__(None, None, None)
+            self._ssl_cm = None
 
         total = len(self.results)
         passed = sum(1 for r in self.results if r["status"] == "PASSED")

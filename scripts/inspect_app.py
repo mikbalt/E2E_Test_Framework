@@ -1,27 +1,55 @@
 """
-UI Inspector — Discover element IDs, control types, and automation IDs.
+UI Inspector & Recorder — Discover element IDs and generate test code.
 
 Run this BEFORE writing tests to understand your app's UI structure.
-This tool shows you exactly what names/IDs to use in your tests.
+Shows exactly what auto_id / name / control_type to use in driver calls.
 
-Usage:
-    # Inspect an app by path
-    python scripts/inspect_app.py "C:\Program Files\YourApp\App.exe"
+3 Modes:
+    1. Inspect (default) — Dump full control tree + summary tables
+    2. Interactive (-i)   — Hover mouse over elements, see live info
+    3. Record (--record)  — Click elements in the app, generates YAML + Python stub
+
+Inspect Mode (default):
+    # Launch app and inspect
+    python scripts/inspect_app.py "C:\\Program Files (x86)\\IDEMIA\\PCOM32\\PCOM32.exe"
 
     # Inspect an already running app by window title
-    python scripts/inspect_app.py --title "My App*"
+    python scripts/inspect_app.py --title "PCOM32*"
 
-    # Deep inspection (more levels)
-    python scripts/inspect_app.py --title "Calculator" --depth 5
+    # Deeper tree (default depth=3)
+    python scripts/inspect_app.py --title "PCOM32*" --depth 5
 
     # Save output to file
-    python scripts/inspect_app.py --title "Calculator" --output controls.txt
+    python scripts/inspect_app.py --title "PCOM32*" --output controls.txt
 
-    # Interactive mode: click to identify elements
-    python scripts/inspect_app.py --title "Calculator" --interactive
+Interactive Mode:
+    # Hover mouse over elements — prints auto_id/name/type in real-time
+    python scripts/inspect_app.py --title "PCOM32*" --interactive
 
-    # Record mode: capture clicks as a test flow
-    python scripts/inspect_app.py --title "Calculator" --record
+Record Mode:
+    # Click elements in the app — generates YAML flow + Python test stub
+    python scripts/inspect_app.py --title "PCOM32*" --record
+
+    # Custom output prefix (creates my_flow.yaml + my_flow.py)
+    python scripts/inspect_app.py --title "PCOM32*" --record -r my_flow
+
+    # For Edit/ComboBox elements, you'll be prompted to enter text values.
+    # Press Ctrl+C to stop recording and save files.
+
+Output (Record Mode):
+    - <prefix>.yaml  — step-by-step flow (action, auto_id, name, control_type)
+    - <prefix>.py    — ready-to-use test stub with tracked_step() + driver calls
+
+Options:
+    app_path          Path to .exe (launches the app)
+    --title, -t       Window title pattern (connects to running app)
+    --backend, -b     uia (default, WPF/modern) or win32 (WinForms/classic)
+    --depth, -d       Control tree depth, default 3
+    --output, -o      Save inspect output to file
+    --wait, -w        Startup wait in seconds, default 3
+    --interactive, -i Hover-to-identify mode
+    --record          Click-to-record mode
+    -r PREFIX         Output filename prefix for record mode
 """
 
 import argparse
@@ -378,6 +406,81 @@ def record_flow(app_path=None, title=None, backend="uia",
     logger.info(header)
 
 
+def _read_combobox_items(combo, backend="uia"):
+    """Extract all items from a ComboBox using multiple strategies.
+
+    WinForms ComboBoxes in UIA backend often create a separate popup List
+    window when expanded. This function tries several approaches.
+    """
+    items = []
+
+    # Strategy 1: expand → search descendants for ListItem
+    try:
+        combo.expand()
+        time.sleep(0.5)
+
+        # 1a: Direct ListItem children
+        try:
+            list_items = combo.descendants(control_type="ListItem")
+            items = [li.window_text() for li in list_items if li.window_text()]
+        except Exception:
+            pass
+
+        # 1b: If no ListItems, look for a child List control first
+        if not items:
+            try:
+                child_list = combo.child_window(control_type="List")
+                if child_list.exists(timeout=1):
+                    list_items = child_list.children(control_type="ListItem")
+                    items = [li.window_text() for li in list_items if li.window_text()]
+            except Exception:
+                pass
+
+        # 1c: Search Desktop for popup List window (WinForms dropdown is a top-level window)
+        if not items:
+            try:
+                from pywinauto import Desktop
+                desktop = Desktop(backend=backend)
+                for win in desktop.windows():
+                    try:
+                        if win.element_info.control_type == "List":
+                            list_items = win.children(control_type="ListItem")
+                            if list_items:
+                                items = [li.window_text() for li in list_items if li.window_text()]
+                                break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        try:
+            combo.collapse()
+        except Exception:
+            pass
+    except Exception:
+        try:
+            combo.collapse()
+        except Exception:
+            pass
+
+    # Strategy 2: item_texts() (win32 style)
+    if not items:
+        try:
+            items = list(combo.item_texts())
+        except Exception:
+            pass
+
+    # Strategy 3: texts() fallback
+    if not items:
+        try:
+            raw = combo.texts()
+            items = [t for t in raw if t and t.strip()]
+        except Exception:
+            pass
+
+    return items
+
+
 def inspect_app(app_path=None, title=None, backend="uia", depth=3,
                 output_file=None, interactive=False, startup_wait=3):
     """Main inspection routine."""
@@ -471,6 +574,197 @@ def inspect_app(app_path=None, title=None, backend="uia", depth=3,
                 )
     except Exception as e:
         tree_output.append(f"  Error scanning input fields: {e}")
+
+    # --- Data Elements (Lists, Tables, Dropdowns) ---
+    tree_output.append("")
+    tree_output.append(header)
+    tree_output.append("DATA ELEMENTS (lists, tables, dropdowns)")
+    tree_output.append(header)
+    tree_output.append("")
+
+    data_types = ["List", "DataGrid", "Table"]
+    try:
+        for ctrl_type in data_types:
+            elements = window.descendants(control_type=ctrl_type)
+            for elem in elements:
+                name = elem.window_text() or "(no name)"
+                auto_id = elem.automation_id() if hasattr(elem, 'automation_id') else ""
+                auto_id_display = auto_id or "(no id)"
+                locator = f'auto_id="{auto_id}"' if auto_id else f'name="{name}"'
+
+                tree_output.append(f"  [{ctrl_type}] name=\"{name}\" auto_id=\"{auto_id_display}\"")
+
+                # --- Headers ---
+                headers = []
+                try:
+                    # Strategy 1: direct HeaderItem children
+                    header_items = elem.children(control_type="HeaderItem")
+                    # Strategy 2: Header → HeaderItem
+                    if not header_items:
+                        header_row = elem.child_window(control_type="Header")
+                        header_items = header_row.children(control_type="HeaderItem")
+                    headers = [h.window_text() for h in header_items]
+                except Exception:
+                    pass
+
+                # Strategy 3: parse column names from Edit child names (WinForms DataGridView)
+                # e.g. "Profile Name Row 0, Not sorted." → column = "Profile Name"
+                if not headers:
+                    try:
+                        edits = elem.descendants(control_type="Edit")
+                        col_names = set()
+                        for e in edits:
+                            edit_name = e.window_text() or ""
+                            if " Row " in edit_name:
+                                col_part = edit_name.split(" Row ")[0]
+                                col_names.add(col_part)
+                        if col_names:
+                            headers = sorted(col_names)
+                    except Exception:
+                        pass
+
+                if headers:
+                    tree_output.append(f"    Headers: {headers}")
+
+                # --- Rows ---
+                rows_found = False
+
+                # Strategy 1: DataItem or ListItem children
+                for child_type in ("DataItem", "ListItem"):
+                    try:
+                        data_items = elem.children(control_type=child_type)
+                        if data_items:
+                            tree_output.append(f"    Rows ({len(data_items)}):")
+                            for j, row_elem in enumerate(data_items[:10]):
+                                cells = row_elem.children()
+                                row_data = [c.window_text() for c in cells]
+                                if not row_data:
+                                    row_data = [row_elem.window_text()]
+                                tree_output.append(f"      [{j}] {row_data}")
+                            if len(data_items) > 10:
+                                tree_output.append(f"      ... and {len(data_items) - 10} more rows")
+                            rows_found = True
+                            break
+                    except Exception:
+                        continue
+
+                # Strategy 2: Custom children (WinForms DataGridView rows)
+                if not rows_found:
+                    try:
+                        custom_rows = elem.children(control_type="Custom")
+                        if custom_rows:
+                            tree_output.append(f"    Rows ({len(custom_rows)}):")
+                            for j, row_elem in enumerate(custom_rows[:10]):
+                                cells = row_elem.children()
+                                row_data = []
+                                for c in cells:
+                                    val = ""
+                                    # For Edit cells, read actual value not accessibility name
+                                    try:
+                                        val = c.iface_value.CurrentValue
+                                    except Exception:
+                                        try:
+                                            val = c.legacy_properties().get("Value", "")
+                                        except Exception:
+                                            val = c.window_text() or ""
+                                    if val:
+                                        row_data.append(val)
+                                if not row_data:
+                                    row_data = [row_elem.window_text()]
+                                tree_output.append(f"      [{j}] {row_data}")
+                            if len(custom_rows) > 10:
+                                tree_output.append(f"      ... and {len(custom_rows) - 10} more rows")
+                            rows_found = True
+                    except Exception:
+                        pass
+
+                # Strategy 3: Parse Edit children by row number (WinForms DataGridView)
+                # Groups "Column Row N, ..." edits into rows
+                if not rows_found:
+                    try:
+                        import re as _re
+                        edits = elem.descendants(control_type="Edit")
+                        row_map = {}  # row_num -> {col_name: value}
+                        for e in edits:
+                            edit_name = e.window_text() or ""
+                            match = _re.match(r"(.+?) Row (\d+)", edit_name)
+                            if match:
+                                col_name = match.group(1)
+                                row_num = int(match.group(2))
+                                if row_num not in row_map:
+                                    row_map[row_num] = {}
+                                # Read actual cell value via legacy_properties or value
+                                cell_val = ""
+                                try:
+                                    cell_val = e.iface_value.CurrentValue
+                                except Exception:
+                                    try:
+                                        cell_val = e.legacy_properties().get("Value", "")
+                                    except Exception:
+                                        pass
+                                row_map[row_num][col_name] = cell_val
+
+                        if row_map:
+                            sorted_rows = sorted(row_map.keys())
+                            tree_output.append(f"    Rows ({len(sorted_rows)}):")
+                            for j in sorted_rows[:10]:
+                                row_dict = row_map[j]
+                                row_vals = [f"{k}={v}" for k, v in row_dict.items()]
+                                tree_output.append(f"      [{j}] {{{', '.join(row_vals)}}}")
+                            if len(sorted_rows) > 10:
+                                tree_output.append(f"      ... and {len(sorted_rows) - 10} more rows")
+                            rows_found = True
+                    except Exception:
+                        pass
+
+                if not rows_found:
+                    tree_output.append("    Rows: (empty or unable to read)")
+
+                tree_output.append(f"    Usage: driver.get_list_items({locator})")
+                if ctrl_type in ("DataGrid", "Table"):
+                    tree_output.append(f"           driver.get_table_data({locator})")
+                tree_output.append(f"           driver.select_list_item(\"item_text\", {locator})")
+                tree_output.append("")
+    except Exception as e:
+        tree_output.append(f"  Error scanning data elements: {e}")
+
+    # ComboBox items detail
+    tree_output.append("")
+    tree_output.append(header)
+    tree_output.append("COMBOBOX / DROPDOWN DETAILS")
+    tree_output.append(header)
+    tree_output.append("")
+    try:
+        combos = window.descendants(control_type="ComboBox")
+        if not combos:
+            tree_output.append("  (no ComboBox elements found)")
+        for elem in combos:
+            name = elem.window_text() or "(no name)"
+            auto_id = elem.automation_id() if hasattr(elem, 'automation_id') else ""
+            auto_id_display = auto_id or "(no id)"
+            locator = f'auto_id="{auto_id}"' if auto_id else f'name="{name}"'
+
+            tree_output.append(f"  [{name}] auto_id=\"{auto_id_display}\"")
+
+            # Try to read items via multiple strategies
+            options = _read_combobox_items(elem, backend)
+
+            if options:
+                tree_output.append(f"    Options ({len(options)}):")
+                for j, opt in enumerate(options[:15]):
+                    tree_output.append(f"      [{j}] {opt}")
+                if len(options) > 15:
+                    tree_output.append(f"      ... and {len(options) - 15} more")
+            else:
+                tree_output.append("    Options: (empty or cannot expand)")
+
+            selected = elem.window_text() or "(none)"
+            tree_output.append(f"    Selected: {selected}")
+            tree_output.append(f"    Usage: driver.select_combobox({locator}, value=\"option\")")
+            tree_output.append(f"           driver.get_combobox_items({locator})")
+            tree_output.append("")
+    except Exception as e:
+        tree_output.append(f"  Error scanning combobox elements: {e}")
 
     # --- Text/Status Elements ---
     tree_output.append("")

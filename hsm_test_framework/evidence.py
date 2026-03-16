@@ -38,6 +38,7 @@ class Evidence:
         self.step_count = 0
         self.log_entries = []
         self.screenshots = []
+        self._finalized = False
 
         # Setup file logger for this test
         self.log_file = os.path.join(self.evidence_dir, "test_log.txt")
@@ -181,6 +182,10 @@ class Evidence:
 
     def finalize(self):
         """Finalize evidence collection and cleanup."""
+        if self._finalized:
+            return
+        self._finalized = True
+
         # Write summary
         summary_path = os.path.join(self.evidence_dir, "summary.txt")
         with open(summary_path, "w", encoding="utf-8") as f:
@@ -201,20 +206,45 @@ class Evidence:
             f"{len(self.screenshots)} screenshots"
         )
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.finalize()
+
+    def __del__(self):
+        if not self._finalized:
+            try:
+                self.finalize()
+            except Exception:
+                pass
+
 
 class StepTracker:
-    """Context manager for tracking test steps with automatic screenshots."""
+    """Context manager for tracking test steps with automatic screenshots.
 
-    def __init__(self, evidence, driver, description):
+    Args:
+        evidence: Evidence instance.
+        driver: UIDriver instance.
+        description: Step description.
+        auto_screenshot: If True (default), capture screenshot on exit.
+            Set to False for manual screenshot control within the step.
+    """
+
+    def __init__(self, evidence, driver, description, auto_screenshot=True):
         self.evidence = evidence
         self.driver = driver
         self.description = description
+        self.auto_screenshot = auto_screenshot
 
     def __enter__(self):
         self.evidence.step(self.description)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if not self.auto_screenshot and exc_type is None:
+            return  # Skip screenshot on success when manual mode
+        # Always capture on failure, even in manual mode
         suffix = "fail" if exc_type else "pass"
         name = f"step_{self.evidence.step_count:03d}_{suffix}"
         result = self.evidence.screenshot(self.driver, name)
@@ -225,7 +255,7 @@ class StepTracker:
 
 
 @contextmanager
-def tracked_step(evidence, driver, description):
+def tracked_step(evidence, driver, description, auto_screenshot=True):
     """
     Combined allure.step + StepTracker — eliminates double nesting.
 
@@ -238,17 +268,30 @@ def tracked_step(evidence, driver, description):
         with tracked_step(evidence, driver, "desc"):
             ...
 
+    For manual screenshot control:
+        with tracked_step(evidence, driver, "desc", auto_screenshot=False):
+            driver.type_text("admin", auto_id="1001")
+            evidence.screenshot(driver, "after_username")
+
     Args:
         evidence: Evidence instance for logging and screenshots.
         driver: UIDriver instance for window screenshots.
         description: Human-readable step description.
+        auto_screenshot: If True (default), capture screenshot on step exit.
+            Set to False to take screenshots manually within the step.
     """
     try:
         import allure
-
-        with allure.step(description):
-            with StepTracker(evidence, driver, description):
-                yield
+        _has_allure = True
     except ImportError:
-        with StepTracker(evidence, driver, description):
+        _has_allure = False
+
+    if _has_allure:
+        with allure.step(description):
+            with StepTracker(evidence, driver, description,
+                             auto_screenshot=auto_screenshot):
+                yield
+    else:
+        with StepTracker(evidence, driver, description,
+                         auto_screenshot=auto_screenshot):
             yield

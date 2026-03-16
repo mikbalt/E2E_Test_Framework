@@ -94,9 +94,14 @@ def _resolve_placeholders(obj):
     if isinstance(obj, list):
         return [_resolve_placeholders(item) for item in obj]
     if isinstance(obj, str) and "${" in obj:
-        return _PLACEHOLDER_RE.sub(
-            lambda m: os.environ.get(m.group(1), ""), obj
-        )
+        def _replace(m):
+            var_name = m.group(1)
+            value = os.environ.get(var_name)
+            if value is None:
+                logger.warning(f"Unset env var placeholder: ${{{var_name}}} (resolved to empty string)")
+                return ""
+            return value
+        return _PLACEHOLDER_RE.sub(_replace, obj)
     return obj
 
 
@@ -112,6 +117,7 @@ def _apply_env_overrides(cfg):
         HSM_PORT         → apps.e_admin.connection.port + health_check tcp check port
         E_ADMIN_PATH     → apps.e_admin.path
         PUSHGATEWAY_URL  → metrics.pushgateway_url
+        LOKI_URL         → remote_logs.loki_url
         TCMS_API_URL     → kiwi_tcms.url
         KIWI_PLAN_ID     → kiwi_tcms.plan_id  (only for --kiwi-create-run)
         KIWI_BUILD_ID    → kiwi_tcms.build_id (only for --kiwi-create-run)
@@ -148,6 +154,11 @@ def _apply_env_overrides(cfg):
     # --- Pushgateway ---
     if pushgateway_url:
         cfg.setdefault("metrics", {})["pushgateway_url"] = pushgateway_url
+
+    # --- Loki ---
+    loki_url = os.environ.get("LOKI_URL", "").strip()
+    if loki_url:
+        cfg.setdefault("remote_logs", {})["loki_url"] = loki_url
 
     # --- Kiwi TCMS ---
     kiwi = cfg.setdefault("kiwi_tcms", {})
@@ -322,9 +333,12 @@ def pytest_sessionstart(session):
     os_name = platform.system()
     os_ver = platform.release()
     if os_name == "Windows" and os_ver == "10":
-        build = int(platform.version().split(".")[-1])
-        if build >= 22000:
-            os_ver = "11"
+        try:
+            build = int(platform.version().split(".")[-1])
+            if build >= 22000:
+                os_ver = "11"
+        except (ValueError, IndexError):
+            pass
     logger.info(f"Platform: {os_name} {os_ver}")
     logger.info(f"Timestamp: {datetime.datetime.now().isoformat()}")
     logger.info("=" * 60)
@@ -357,32 +371,61 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
 
-    if report.when == "call":
-        result = {
-            "name": item.name,
-            "nodeid": item.nodeid,
-            "status": "PASSED" if report.passed else "FAILED",
-            "duration": call.duration,
-            "evidence_dir": None,
-        }
-        if report.failed and call.excinfo:
-            result["error"] = str(call.excinfo.value)
+    # Record result on "call" phase, or on "setup"/"teardown" if they failed.
+    # Setup/teardown failures (e.g. fixture timeout) are still test failures
+    # from a QA perspective and must be reported to Kiwi TCMS and metrics.
+    is_call = report.when == "call"
+    is_fixture_failure = report.when in ("setup", "teardown") and report.failed
 
-        # Extract evidence_dir: fixture-based or instance-based
-        if hasattr(item, "funcargs") and "evidence" in item.funcargs:
-            result["evidence_dir"] = item.funcargs["evidence"].evidence_dir
-        elif hasattr(item, "instance") and hasattr(getattr(item, "instance", None), "evidence"):
-            ev = item.instance.evidence
-            if hasattr(ev, "evidence_dir"):
-                result["evidence_dir"] = ev.evidence_dir
-
-        # Capture Kiwi case ID for bidirectional reporting
-        if hasattr(item, "_kiwi_case"):
-            result["_kiwi_case_id"] = item._kiwi_case.get("id")
-
+    if is_call or is_fixture_failure:
+        # Avoid duplicate: if setup failed, don't also record a "call" entry
+        # (pytest won't run the call phase anyway, but guard just in case)
         if not hasattr(item.session, "results"):
             item.session.results = []
-        item.session.results.append(result)
+
+        already_recorded = any(
+            r["nodeid"] == item.nodeid for r in item.session.results
+        )
+        if already_recorded:
+            pass  # skip duplicate (e.g. teardown failure after call was recorded)
+        else:
+            if is_fixture_failure:
+                phase = "setup" if report.when == "setup" else "teardown"
+                status = "FAILED"
+                error_msg = str(call.excinfo.value) if call.excinfo else f"Fixture {phase} failed"
+            else:
+                status = "PASSED" if report.passed else "FAILED"
+                error_msg = str(call.excinfo.value) if report.failed and call.excinfo else ""
+
+            result = {
+                "name": item.name,
+                "nodeid": item.nodeid,
+                "status": status,
+                "duration": call.duration,
+                "evidence_dir": None,
+            }
+            if error_msg:
+                result["error"] = error_msg
+
+            # Extract evidence_dir: fixture-based or instance-based
+            if hasattr(item, "funcargs") and "evidence" in item.funcargs:
+                result["evidence_dir"] = item.funcargs["evidence"].evidence_dir
+            elif hasattr(item, "instance") and hasattr(getattr(item, "instance", None), "evidence"):
+                ev = item.instance.evidence
+                if hasattr(ev, "evidence_dir"):
+                    result["evidence_dir"] = ev.evidence_dir
+
+            # Capture Kiwi case ID for bidirectional reporting
+            if hasattr(item, "_kiwi_case"):
+                result["_kiwi_case_id"] = item._kiwi_case.get("id")
+
+            item.session.results.append(result)
+
+            if is_fixture_failure:
+                logger.warning(
+                    f"Fixture {phase} failure recorded for {item.nodeid}: "
+                    f"{error_msg[:200]}"
+                )
 
         # Smoke gate tracking
         smoke_gate = getattr(item.config, "_smoke_gate", None)
@@ -574,6 +617,7 @@ def _push_to_kiwi(results, cfg, config=None):
                 status=result["status"],
                 comment=result.get("error", ""),
                 duration=result.get("duration", 0),
+                evidence_dir=result.get("evidence_dir"),
             )
 
         reporter.finalize()
@@ -600,6 +644,7 @@ def _push_to_kiwi_bidirectional(results, reporter, config=None):
                     comment=result.get("error", ""),
                     duration=result.get("duration", 0),
                     nodeid=result.get("nodeid"),
+                    evidence_dir=result.get("evidence_dir"),
                 )
 
         # 2. Mark unmatched TCMS cases as BLOCKED

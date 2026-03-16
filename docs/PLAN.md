@@ -54,8 +54,7 @@
 |-----|----------|----------|-----|
 | `STATUS_BLOCKED` undefined variable | `kiwi_tcms.py:203` | Medium | Change to `self.status_ids["BLOCKED"]` |
 | `resolve_platform_config` only resolves `command` and `working_dir` | `console_runner.py:39` | Low | Should also resolve `log_path`, `log_dir`, `gtest_xml` |
-| `test_sample_app.py` creates UIDriver directly instead of using fixtures | `test_sample_app.py:36-43` | Low | Refactor to use `ui_app` fixture |
-| `test_sample_app.py` uses deprecated `StepTracker` instead of `tracked_step` | `test_sample_app.py:58-99` | Low | Migrate to `tracked_step` |
+
 
 ---
 
@@ -97,7 +96,7 @@ The app is configured (`AdminApp.exe`, WinForms, HSM simulator). Only connection
 
 - [x] **Migrate `test_sample_app.py`** to use fixtures (`ui_app`, `evidence`) instead of direct instantiation
 - [x] **Replace `StepTracker` with `tracked_step`** in `test_sample_app.py`
-- [ ] **Enable Kiwi TCMS** — configure credentials if infrastructure is available (user: intentionally disabled for now)
+- [x] **Enable Kiwi TCMS** — configure credentials if infrastructure is available (user: intentionally disabled for now)
 - [ ] **Add unit tests** for `resolve_platform_config()` and `smoke_gate.py` (pure logic, easy to test)
 
 #### TCMS Bidirectional Flow Improvements (DONE)
@@ -358,3 +357,12 @@ assert "Connected" in status, (
 - Use `inspect_app.py` to discover E-Admin UI elements before writing new tests
 - `tracked_step` is the recommended pattern — avoid raw `StepTracker`
 - TCMS Gherkin is documentation, not executable — keep Python tests native pytest
+
+
+python scripts/inspect_app.py "C:\SPHERE_HSM\Admin Application\AdminApp.exe" --record -r check_flow
+
+
+Action plan :
+1. Gimana klo kita mulai dari beberapa button yg ada di e-admin ini kita buat semacam pages/properties, pada dasarnya kan button akan selalu disitu , agar tidak redundant jadi bisa kita panggil saja setiap buth pages itu.
+2. Dicoba handle kalo butuh list down 
+3. bisa ga ngetrigrer automation di server lain ? OK

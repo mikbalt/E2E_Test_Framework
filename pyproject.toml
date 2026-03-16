@@ -8,26 +8,29 @@ version = "1.2.0"
 description = "Reusable E2E test framework for Windows apps and console tools (PKCS#11, HSM)"
 requires-python = ">=3.9"
 dependencies = [
-    "pytest>=7.4.0",
+    "pytest>=7.4.0,<9",
     "pytest-ordering>=0.6",
-    "pytest-timeout>=2.2.0",
-    "allure-pytest>=2.13.0",
-    "Pillow>=10.0.0",
-    "mss>=9.0.0",
-    "PyYAML>=6.0.1",
-    "python-dotenv>=1.0.0",
-    "tcms-api>=12.0",
+    "pytest-timeout>=2.2.0,<3",
+    "allure-pytest>=2.13.0,<3",
+    "Pillow>=10.0.0,<12",
+    "mss>=9.0.0,<10",
+    "PyYAML>=6.0.1,<7",
+    "python-dotenv>=1.0.0,<2",
+    "tcms-api>=12.0,<14",
 ]
 
 [project.optional-dependencies]
 # Windows-only: UI automation
 ui = ["pywinauto>=0.6.8"]
+# Remote agent / Loki log collection
+remote = ["requests>=2.28,<3"]
 # Grafana/Prometheus metrics
-metrics = ["prometheus-client>=0.20.0"]
+metrics = ["prometheus-client>=0.20.0,<1"]
 # All optional dependencies
 all = [
     "pywinauto>=0.6.8",
-    "prometheus-client>=0.20.0",
+    "prometheus-client>=0.20.0,<1",
+    "requests>=2.28,<3",
 ]
 
 # Auto-register pytest plugin so consumer repos get fixtures/hooks for free
@@ -49,6 +52,8 @@ markers = [
     "e_admin: E-Admin application specific tests",
     "slow: Tests that take longer than 30 seconds",
     "tcms(case_id): Map this test to a specific Kiwi TCMS TestCase ID",
+    "order(index): Execution order for pytest-ordering plugin",
+    "depends_on(*case_ids): Skip test if any dependency TC did not pass",
 ]
 addopts = [
     "-v",
@@ -61,7 +66,7 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
-timeout = 300
+timeout = 600
 timeout_method = "thread"
 filterwarnings = [
     "ignore:Revert to STA COM threading mode:UserWarning",

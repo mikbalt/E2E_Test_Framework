@@ -13,5 +13,8 @@ pywinauto>=0.6.8; sys_platform == "win32"
 # Optional: Grafana/Prometheus metrics
 prometheus-client>=0.20.0
 
+# Optional: Loki remote log collection
+requests>=2.28.0
+
 # Optional: HTML report (alternative to Allure)
 pytest-html>=4.1.0

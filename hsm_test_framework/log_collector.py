@@ -62,9 +62,10 @@ class LogMonitor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if os.path.exists(self.log_path):
             try:
-                with open(self.log_path, "r", encoding=self.encoding, errors="replace") as f:
+                with open(self.log_path, "rb") as f:
                     f.seek(self._start_pos)
-                    self.captured = f.read()
+                    raw = f.read()
+                self.captured = raw.decode(self.encoding, errors="replace")
             except Exception as e:
                 logger.warning(f"Could not read log file {self.log_path}: {e}")
                 self.captured = f"[Error reading log: {e}]"
@@ -376,12 +377,13 @@ class LogCollector:
 
     def _collect_tail(self, log_path, name, lines=500):
         """Collect the last N lines of a large log file."""
+        from collections import deque
+
         try:
             with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                all_lines = f.readlines()
-                tail = all_lines[-lines:]
+                tail = deque(f, maxlen=lines)
 
-            content = f"[... truncated, showing last {lines} of {len(all_lines)} lines ...]\n"
+            content = f"[... truncated, showing last {lines} lines ...]\n"
             content += "".join(tail)
 
             basename = name or os.path.basename(log_path)

@@ -9,10 +9,20 @@ apps:
   # E-Admin Application
   e_admin:
     path: "${E_ADMIN_PATH}"             # Required — set in .env
-    class_name: "WindowsForms10\\.Window.*"  # WinForms app (title kosong)
+    class_name: "WindowsForms10\\.Window.*"  # WinForms app (empty title)
     startup_wait: 5                # Seconds to wait after launch
     backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
     app_logs_dir: "${E_ADMIN_APP_LOGS}" # App logs dir — collected + zipped after each test
+    compact_logs_dir: 'C:\SPHERE_HSM\Admin Application\AppLogs\Compact'  # Cleared before start to avoid signature popup
+    popup_dismiss_buttons: ["OK", "Yes", "Close"]   # Button titles for auto-dismiss
+    popup_dismiss_auto_ids: ["2", "btnOKE"]        # Button auto_ids for auto-dismiss
+    retry:
+      max_attempts: 3                   # Total attempts for popup-retry (default: 2)
+      delay: 0.5                        # Seconds between retries
+    window_monitor:
+      enabled: true                  # Background monitor for unexpected windows
+      interval: 1.0                  # Polling interval in seconds
+      auto_dismiss: false            # Auto-close unexpected windows (future)
     connection:
       ip: "${HSM_IP}"                # Required — set in .env
       port: "${HSM_PORT}"           # Required — set in .env
@@ -98,13 +108,52 @@ kiwi_tcms:
 
 # --- Grafana / Prometheus ---
 metrics:
-  enabled: false                  # Set true after Prometheus Pushgateway is ready
+  enabled: true                  # Set true after Prometheus Pushgateway is ready
   pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
   job_name: "E2E_Sphere_HSM"
   # run_id: Auto-generated per session (override with --run-id CLI flag)
   labels:
     environment: "staging"
     team: "security"
+
+# --- Remote Logs (Loki) ---
+# After each test, query Loki for logs from all VMs within the test's
+# time range. Results are saved as .log files, zipped, and attached to Allure.
+remote_logs:
+  enabled: true                     # Set true after Loki is reachable
+  loki_url: "${LOKI_URL}"           # Required — set in .env
+  default_limit: 5000                 # Max log lines per query (Loki server limit -5000)
+  timeout: 30                       # HTTP request timeout (seconds)
+  time_buffer: 60                   # Extra seconds ± to cover clock skew between VMs
+  queries:
+    - label: "sphere_hsm_admin"
+      query: '{job="sphere_hsm_admin"}'
+    - label: "sphere_hsm_admin_applog"
+      query: '{job="sphere_hsm_admin_applog"}'
+    - label: "sphere_hsm_proxy"
+      query: '{job="sphere_hsm_proxy"}'
+      limit: 50000                    # Paginated in 5000-line batches (proxy very verbose)
+
+# --- Remote Agents ---
+# Trigger automation on remote Windows VMs via HTTP.
+# Each agent must be running on its target VM (interactive desktop session).
+# Supports multiple VMs — access by name: remote["proxy_vm"].run_script(...)
+# See docs/remote_agent_guide.md for setup instructions.
+remote_agents:
+  enabled: false                       # Set true after agents are running
+  default_port: 5050                   # Default port if not specified per agent
+  default_timeout: 120                 # Default command timeout in seconds
+  agents:
+    proxy_vm:
+      host: "${REMOTE_AGENT_PROXY_HOST}"   # e.g. 10.66.1.10 — set in .env
+      port: 5050
+      auth_token: ""
+      description: "HSM Proxy VM"
+    # key_server_vm:
+    #   host: "${REMOTE_AGENT_KEYS_HOST}"  # e.g. 10.66.1.20
+    #   port: 5050
+    #   auth_token: ""
+    #   description: "Key Server VM"
 
 # --- Jenkins ---
 jenkins:
