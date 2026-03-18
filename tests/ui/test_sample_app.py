@@ -15,7 +15,7 @@ import logging
 import allure
 import pytest
 
-from hsm_test_framework import tracked_step
+from sphere_e2e_test_framework import tracked_step
 
 logger = logging.getLogger(__name__)
 

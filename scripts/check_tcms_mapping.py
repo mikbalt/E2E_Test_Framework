@@ -50,7 +50,11 @@ def collect_tcms_markers(test_dir):
 
 
 def _parse_file_for_tcms(filepath, markers):
-    """Parse a single file for @pytest.mark.tcms decorators."""
+    """Parse a single file for @pytest.mark.tcms decorators.
+
+    Checks both class-level and method-level decorators. Class-level
+    markers propagate to all test methods in the class (same as pytest).
+    """
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             source = f.read()
@@ -60,13 +64,34 @@ def _parse_file_for_tcms(filepath, markers):
 
     rel_path = os.path.relpath(filepath, PROJECT_ROOT)
 
+    # 1. Check class-level @pytest.mark.tcms — propagates to all test methods
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for decorator in node.decorator_list:
+            case_id = _extract_tcms_case_id(decorator)
+            if case_id is not None:
+                # Find first test method in the class for reporting
+                test_func = None
+                for child in ast.walk(node):
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        if child.name.startswith("test_"):
+                            test_func = child
+                            break
+                markers[case_id] = {
+                    "file": rel_path,
+                    "function": test_func.name if test_func else f"(class {node.name})",
+                    "class": node.name,
+                    "line": node.lineno,
+                }
+
+    # 2. Check method-level @pytest.mark.tcms (overrides class-level if same case_id)
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         if not node.name.startswith("test_"):
             continue
 
-        # Find parent class if any
         class_name = _find_parent_class(tree, node)
 
         for decorator in node.decorator_list:
@@ -119,8 +144,8 @@ def fetch_tcms_cases(run_id):
 
     Returns list of dicts: [{"id": int, "summary": str, "status_id": int}]
     """
-    from hsm_test_framework.plugin import load_config
-    from hsm_test_framework.kiwi_tcms import KiwiReporter
+    from sphere_e2e_test_framework.plugin import load_config
+    from sphere_e2e_test_framework.driver.kiwi_tcms import KiwiReporter
 
     cfg = load_config()
     tcms_config = cfg.get("kiwi_tcms", {})

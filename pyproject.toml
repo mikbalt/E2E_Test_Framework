@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hsm-test-framework"
+name = "sphere-e2e-test-framework"
 version = "1.2.0"
 description = "Reusable E2E test framework for Windows apps and console tools (PKCS#11, HSM)"
 requires-python = ">=3.9"
@@ -35,10 +35,10 @@ all = [
 
 # Auto-register pytest plugin so consumer repos get fixtures/hooks for free
 [project.entry-points.pytest11]
-hsm_test_framework = "hsm_test_framework.plugin"
+sphere_e2e_test_framework = "sphere_e2e_test_framework.plugin"
 
 [tool.setuptools.packages.find]
-include = ["hsm_test_framework*"]
+include = ["sphere_e2e_test_framework*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -50,10 +50,14 @@ markers = [
     "regression: Full regression tests",
     "critical: Critical path tests that must pass",
     "e_admin: E-Admin application specific tests",
+    "cps: CPS application specific tests",
+    "proxy: Proxy application specific tests",
     "slow: Tests that take longer than 30 seconds",
     "tcms(case_id): Map this test to a specific Kiwi TCMS TestCase ID",
     "order(index): Execution order for pytest-ordering plugin",
     "depends_on(*case_ids): Skip test if any dependency TC did not pass",
+    "cpp: C/C++ based tests (PKCS#11 native tooling)",
+    "flow: Flow-based tests (use -m flow to run only flow tests, -m 'not flow' for imperative only)",
 ]
 addopts = [
     "-v",

@@ -43,7 +43,7 @@ pip install flask mss pillow pywinauto
 Or install the full framework:
 
 ```powershell
-pip install -e git+https://gitlab.yourcompany.com/qa/hsm-test-framework.git
+pip install -e git+https://gitlab.yourcompany.com/qa/sphere-e2e-test-framework.git
 pip install flask
 ```
 
@@ -60,7 +60,7 @@ Example script (`C:\automation\scripts\setup_proxy.py`):
 ```python
 """Setup HSM Proxy — executed by Remote Agent."""
 import sys
-from hsm_test_framework import UIDriver
+from sphere_e2e_test_framework import UIDriver
 
 def main():
     driver = UIDriver(
@@ -94,7 +94,7 @@ Example script that runs a .bat file then configures UI:
 """Run prerequisite bat then configure app."""
 import subprocess
 import sys
-from hsm_test_framework import UIDriver
+from sphere_e2e_test_framework import UIDriver
 
 def main():
     # Step 1: Run bat file
@@ -201,7 +201,7 @@ REMOTE_AGENT_KEYS_HOST=10.66.1.20
 ```python
 # conftest.py
 import pytest
-from hsm_test_framework import RemoteAgentPool
+from sphere_e2e_test_framework import RemoteAgentPool
 
 @pytest.fixture(scope="session")
 def remote(config):
@@ -258,7 +258,7 @@ def test_parallel_setup(remote):
 ### Single VM (Simple Usage)
 
 ```python
-from hsm_test_framework import RemoteTrigger
+from sphere_e2e_test_framework import RemoteTrigger
 
 trigger = RemoteTrigger(host="10.66.1.10", port=5050)
 
@@ -364,7 +364,7 @@ Returns list of available `.py` scripts in the scripts directory.
 ### RemoteTrigger (Single VM)
 
 ```python
-from hsm_test_framework import RemoteTrigger
+from sphere_e2e_test_framework import RemoteTrigger
 
 trigger = RemoteTrigger(
     host="10.66.1.10",    # Remote VM IP
@@ -387,7 +387,7 @@ trigger = RemoteTrigger(
 ### RemoteAgentPool (Multi-VM)
 
 ```python
-from hsm_test_framework import RemoteAgentPool
+from sphere_e2e_test_framework import RemoteAgentPool
 
 pool = RemoteAgentPool.from_config(config["remote_agents"])
 ```

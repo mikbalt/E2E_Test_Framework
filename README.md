@@ -1,1081 +1,264 @@
-# HSM E2E Test Framework
+# Sphere E2E Test Framework
 
-Reusable, cross-platform E2E test framework for Windows desktop applications and console-based tools (PKCS#11 via Golang, Java, C++, Google Test).
-
-Designed as a **shared base package** — install once, use across multiple test repositories.
-
----
-
-## What's Inside
-
-### Core Framework (`hsm_test_framework/`)
-
-| Module | What It Does |
-|--------|-------------|
-| `ui_driver.py` | Windows UI automation via pywinauto. Supports WPF, WinForms, Win32. Wraps common actions: click, type, get text, select menu/tab/combobox. |
-| `console_runner.py` | Subprocess wrapper for CLI tools. Captures stdout/stderr/duration. Built-in assertions (`assert_success`, `assert_output_contains`). Helpers for Java, Go, Make, CMake, and generic executables. Cross-platform path resolution. |
-| `evidence.py` | Collects screenshots (per step + on failure), logs, and text output. Auto-attaches to Allure reports. `StepTracker` context manager for step-by-step evidence. `tracked_step` combines `allure.step` + `StepTracker` into a single context manager. |
-| `log_collector.py` | **Collects external log files** from test tools. Supports single files, directories, real-time monitoring, and GTest XML parsing. Auto-attaches to Allure. |
-| `kiwi_tcms.py` | Reports test results to Kiwi TCMS. Auto-creates test runs, syncs pass/fail per test case. |
-| `grafana_push.py` | Pushes metrics (pass rate, duration, trends) to Prometheus Pushgateway for Grafana dashboards. |
-| `plugin.py` | pytest plugin (auto-registered via `pytest11` entry point). Provides fixtures, platform guards, screenshot-on-failure, TCMS and Grafana hooks. Consumer repos get everything for free. |
-
-### Auto-Provided Fixtures
-
-When a consumer repo installs this framework, these fixtures are **automatically available** in every test — no configuration needed:
-
-| Fixture | Type | What It Provides |
-|---------|------|-----------------|
-| `config` | `session` | `settings.yaml` loaded as a Python dict |
-| `evidence` | `per-test` | Evidence collector (screenshots, logs, text) for current test |
-| `console` | `per-test` | `ConsoleRunner` instance for executing CLI commands |
-| `log_collector` | `per-test` | `LogCollector` linked to current test's evidence directory |
-| `ui_app` | `per-test` | `UIDriver` instance (auto-skipped on non-Windows) |
-
-### Sample Tests (`tests/`)
-
-| File | Purpose |
-|------|---------|
-| `tests/ui/test_e_admin.py` | **E-Admin connection test** — uses `tracked_step`, modular fixtures, explicit waits, rich Allure decorators. Reference implementation for UI tests. |
-| `tests/ui/conftest.py` | UI-specific fixtures (`e_admin_driver`, `e_admin_config`), COM init, auto-screenshot on failure hook. |
-| `tests/ui/test_sample_app.py` | Demo: opens Windows Calculator, clicks buttons, verifies result. |
-| `tests/console/test_pkcs11_sample.py` | Demo: runs PKCS#11 tools (native, Go, Java, C++). Cross-platform with `resolve_platform_config()`. |
-
-### Tools & Scripts
-
-| File | Purpose |
-|------|---------|
-| `scripts/setup.bat` / `setup.sh` | One-command setup. Auto-detects best Python version (supports side-by-side installs). |
-| `scripts/run_tests.bat` / `run_tests.sh` | Quick test runner with marker selection and Allure report generation. |
-| `scripts/inspect_app.py` | **UI Inspector** — discover element IDs, control types, automation IDs before writing UI tests. Supports quick scan, deep scan, save-to-file, and interactive hover mode. |
-
-### CI/CD & Infrastructure
-
-| File | Purpose |
-|------|---------|
-| `Jenkinsfile` | Multi-platform pipeline. Runs Windows + Linux agents in parallel, merges Allure results. |
-| `config/settings.yaml` | Central config: app paths (per-platform), tool paths, log paths, evidence, TCMS, Grafana settings. |
-| `config/grafana-dashboard.json` | Ready-to-import Grafana dashboard with pass rate gauge, duration trends, test history. |
-
-### Consumer Repo Templates (`examples/`)
-
-| Template | For | Contents |
-|----------|-----|----------|
-| `examples/consumer-repo-template/` | **UI + general console** tests — new repos for Windows app testing or simple CLI tools | `requirements.txt`, `conftest.py`, `settings.yaml`, sample UI + console tests, `Jenkinsfile` |
-| `examples/pkcs11-consumer-template/` | **PKCS#11 tests** — wrapping existing Java, C++, Go, and Google Test binaries | Build scripts, 4 test wrapper files (Java/C++/Go/GTest), log collection config, `Jenkinsfile` with build stage |
-
----
-
-## Architecture
-
-```
-                    ┌─────────────────────────────────┐
-                    │   hsm-test-framework (GitLab)   │
-                    │   pip-installable package        │
-                    └──────────┬──────────────────────┘
-                               │
-         ┌─────────────────────┼─────────────────────┐
-         │                     │                     │
-  ┌──────▼───────┐   ┌────────▼────────┐   ┌────────▼────────┐
-  │ hsm-admin    │   │ pkcs11-java     │   │ pkcs11-gtest    │
-  │ tests (UI)   │   │ tests (JAR)     │   │ tests (C++)     │
-  └──────────────┘   └─────────────────┘   └─────────────────┘
-         │                     │                     │
-         │              ┌──────▼───────┐   ┌────────▼────────┐
-         │              │ pkcs11-go    │   │ future-app      │
-         │              │ tests (Go)   │   │ tests           │
-         │              └──────────────┘   └─────────────────┘
-         │
-  Each consumer repo:
-    - pip install git+<this-repo>
-    - Gets all fixtures & hooks automatically (config, evidence, console, log_collector, ui_app)
-    - Only writes its own tests + config/settings.yaml
-```
-
----
-
-## Key Features
-
-### 1. Multi-Language Test Wrapping
-
-Python wraps your **existing** test binaries — Java/C++/Go source code stays unchanged:
-
-```
-Python Wrapper                    Your Existing Code
-─────────────────                 ──────────────────
-1. [Optional] Build               Java/C++/Go source unchanged
-2. Run binary via subprocess       Binary runs as-is
-3. Capture stdout + stderr         Output captured for evidence
-4. Collect external log files      Tool's own logs → Allure report
-5. Assert exit code + output       Validate results
-6. Attach everything to Allure     Full evidence trail
-```
-
-### 2. Log Collection (`LogCollector`)
-
-Each test tool can write its own log files. The framework **automatically collects** them:
-
-```python
-# In your test
-def test_keygen(config, console, evidence, log_collector):
-    tool = resolve_platform_config(config["console_tools"]["pkcs11_java"])
-
-    # Monitor log file in real-time (captures only new lines)
-    with log_collector.monitor(tool["log_path"]) as mon:
-        result = console.run_java(jar_path=tool["command"], args=["--keygen"])
-
-    # Collect evidence
-    evidence.attach_text(result.output, "stdout")
-    log_collector.collect_text(mon.captured, "runtime_log")
-    log_collector.collect_from_config(tool)  # auto-picks log_path, log_dir, gtest_xml
-```
-
-Configure log paths in `settings.yaml`:
-
-```yaml
-console_tools:
-  pkcs11_java_keygen:
-    command_linux: "bin/pkcs11-keygen.jar"
-    log_path_linux: "logs/java_keygen.log"        # Single log file
-    log_dir_linux: "logs/java/"                    # Or a directory
-    log_pattern: "*.log"                           # File pattern
-    gtest_xml_linux: "evidence/results.xml"        # GTest XML report
-```
-
-| Method | What It Does |
-|--------|-------------|
-| `collect(path)` | Copy a single log file + attach to Allure |
-| `collect_dir(dir, pattern)` | Collect all matching files from a directory |
-| `monitor(path)` | Context manager — capture only lines written during test execution |
-| `collect_gtest_xml(path)` | Parse GTest XML report, create readable summary + attach both |
-| `collect_from_config(tool)` | Auto-collect based on `log_path`, `log_dir`, `gtest_xml` from settings.yaml |
-| `collect_text(content, name)` | Save raw text as a log file and attach |
-
-### 3. Build Support for Source Code
-
-For tools that need compilation (Java Maven, Go build, C++ Makefile/CMake):
-
-```bash
-# Build everything
-./scripts/build.sh              # or scripts\build.bat
-
-# Build by language
-./scripts/build.sh java         # Maven
-./scripts/build.sh go           # go build
-./scripts/build.sh gtest        # Makefile
-
-# Clean build artifacts
-./scripts/build.sh clean
-```
-
-The `conftest.py` in PKCS#11 template includes a **session-scoped auto-build fixture** that compiles before tests run. Skip with `BUILD_SKIP=1`.
-
-### 4. ConsoleRunner Helpers
-
-| Method | For |
-|--------|-----|
-| `run(command, args)` | Run any command with output capture |
-| `run_java(jar_path, args)` | Run Java JARs or classes |
-| `run_go(binary_path, args)` | Run Go compiled binaries |
-| `run_make(target, makefile_dir)` | Run Makefile targets |
-| `run_cmake_build(build_dir)` | Run CMake builds |
-| `run_executable(exe_path, args)` | Run any compiled binary (auto-handles .exe on Windows) |
-| `run_script(script_path)` | Run .bat, .cmd, .ps1, or shell scripts |
-
-### 5. UI Inspector Tool
-
-Discover element IDs before writing UI tests:
-
-```cmd
-python scripts/inspect_app.py "calc.exe"                        # Quick scan
-python scripts/inspect_app.py --title "My App" --depth 5        # Deep scan
-python scripts/inspect_app.py --title "My App" --output ids.txt # Save to file
-python scripts/inspect_app.py --title "My App" --interactive    # Hover to identify
-```
-
-### 6. Test Markers (Run Per-Part)
-
-| Marker | What it runs | Platform |
-|--------|-------------|----------|
-| `ui` | Windows UI automation tests | Windows only (auto-skipped on Linux) |
-| `console` | Console/CLI tests | Windows + Linux |
-| `pkcs11` | All PKCS#11 tests | Windows + Linux |
-| `java` | Java JAR-based tests | Windows + Linux |
-| `cpp` | C++ native executable tests | Windows + Linux |
-| `go_test` | Go compiled binary tests | Windows + Linux |
-| `gtest` | Google Test (C++) suite tests | Windows + Linux |
-| `smoke` | Quick verification tests | Both |
-| `regression` | Full regression suite | Both |
-| `needs_build` | Tests requiring compilation | Both |
-| `critical` | Critical path tests that must pass | Both |
-| `e_admin` | E-Admin application specific tests | Windows |
-| `slow` | Tests that take longer than 30 seconds | Both |
-
-```bash
-# Run by marker
-pytest -m java -v                     # Java tests only
-pytest -m "pkcs11 and not gtest" -v   # PKCS#11 but exclude GTest
-pytest -m smoke -v                    # Quick smoke tests
-pytest -m "smoke and ui" -v           # Smoke UI tests only
-pytest -m "not slow" -v               # Skip slow tests
-pytest -m critical -v                 # Critical path only
-```
-
----
-
-## Platform Support
-
-| Component | Windows | Linux |
-|-----------|---------|-------|
-| UI tests (pywinauto) | Runs | Auto-skipped |
-| Console tests (PKCS#11) | Runs | Runs |
-| Log collection | Runs | Runs |
-| Evidence / screenshots | Runs | Runs (if display available) |
-| Allure reporting | Runs | Runs |
-| Kiwi TCMS | Runs | Runs |
-| Grafana metrics | Runs | Runs |
-| Jenkins pipeline | `bat` commands | `sh` commands |
-| Build scripts | `build.bat` | `build.sh` |
+Pip-installable pytest plugin for end-to-end testing of Sphere HSM devices.
+Supports Windows desktop UI automation (via pywinauto) and console/CLI tools (PKCS#11).
 
 ---
 
 ## Quick Start
 
-### Framework Development
-
 ```bash
 # 1. Clone
-git clone <gitlab-url>/hsm-test-framework.git
-cd hsm-test-framework
+git clone <gitlab-url>/sphere-e2e-test-framework.git
+cd sphere-e2e-test-framework
 
-# 2. Setup (auto-detects Python, creates venv, installs deps)
-scripts/setup.bat        # Windows
-./scripts/setup.sh       # Linux/macOS
+# 2. Setup (creates venv, installs deps)
+scripts\setup.bat          # Windows
+./scripts/setup.sh         # Linux
 
-# 3. Configure — edit config/settings.yaml with your app/tool paths
+# 3. Configure
+#    Copy .env.example → .env, fill in HSM_IP, E_ADMIN_PATH, etc.
 
-# 4. Run
-scripts/run_tests.bat smoke     # Windows
-./scripts/run_tests.sh smoke    # Linux
-```
-
-### New Consumer Repo (UI / General)
-
-```bash
-cp -r examples/consumer-repo-template/ /path/to/my-tests/
-cd /path/to/my-tests/
-pip install -r requirements.txt
-# Edit config/settings.yaml, then write your tests
-```
-
-### New Consumer Repo (PKCS#11)
-
-```bash
-cp -r examples/pkcs11-consumer-template/ /path/to/pkcs11-tests/
-cd /path/to/pkcs11-tests/
-pip install -r requirements.txt
-# Place binaries in bin/, source in src/
-# Edit config/settings.yaml with paths + log locations
-./scripts/build.sh              # Build source code
-./scripts/run_tests.sh smoke    # Run tests
-```
-
-### Using in Test Files
-
-```python
-from hsm_test_framework import (
-    UIDriver, ConsoleRunner, Evidence, StepTracker, tracked_step,
-    LogCollector, LogMonitor, resolve_platform_config,
-)
-
-# All fixtures auto-available: config, evidence, console, log_collector, ui_app
+# 4. Verify test collection
+pytest tests/ui/e_admin/ -v --co
 ```
 
 ---
 
-## Pytest Standards & Best Practices
-
-This section defines the **standard patterns** for writing tests in this framework. All new tests should follow these conventions.
-
-### 1. Fixture Design — Separate Concerns
-
-**DO NOT** create fat `setup` fixtures that mix driver, evidence, and config. Use modular fixtures from `conftest.py`:
-
-```python
-# tests/ui/conftest.py — UI-specific fixtures
-
-@pytest.fixture(scope="session")
-def e_admin_config(config):
-    """Extract app config once per session."""
-    return config.get("apps", {}).get("e_admin", {})
-
-@pytest.fixture
-def e_admin_driver(e_admin_config):
-    """UIDriver that does NOT auto-close the app."""
-    from hsm_test_framework.ui_driver import UIDriver
-    driver = UIDriver(
-        app_path=e_admin_config.get("path"),
-        class_name=e_admin_config.get("class_name"),
-        backend=e_admin_config.get("backend", "uia"),
-        startup_wait=e_admin_config.get("startup_wait", 5),
-    )
-    driver.start()
-    yield driver
-    # Intentionally NO driver.close() — app stays open
-```
-
-Then in the test class, wire fixtures with a thin `setup`:
-
-```python
-class TestEAdminConnection:
-    @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence):
-        """Wire shared fixtures into test instance."""
-        self.driver = e_admin_driver
-        self.evidence = evidence
-        yield
-```
-
-> **Why?** Reusable across test files, separation of concerns, `evidence` auto-names from `request.node.name`.
-
-### 2. Use `tracked_step` — No Double Nesting
-
-`tracked_step` combines `allure.step()` + `StepTracker` into one context manager:
-
-```python
-from hsm_test_framework import tracked_step
-
-# BAD — double nesting, verbose
-with allure.step("Verify app is visible"):
-    with StepTracker(evidence, driver, "Verify app is visible"):
-        assert driver.main_window.is_visible()
-
-# GOOD — single context manager
-with tracked_step(evidence, driver, "Verify app is visible"):
-    assert driver.main_window.is_visible()
-```
-
-> `StepTracker` is still available for backward compatibility, but `tracked_step` is the recommended pattern.
-
-### 3. Use Explicit Waits — No `time.sleep()`
-
-`time.sleep()` is an anti-pattern: makes tests slow and flaky.
-
-```python
-# BAD — arbitrary delay
-time.sleep(2)
-driver.click_button(auto_id="btnOKE")
-
-# GOOD — wait for element to appear, then click
-driver.wait_for_element(timeout=10, auto_id="btnOKE", control_type="Button")
-driver.click_button(auto_id="btnOKE")
-```
-
-Available wait methods in `UIDriver`:
-
-| Method | Usage |
-|--------|-------|
-| `wait_for_element(timeout=10, **kwargs)` | Wait until element becomes visible |
-| `element_exists(**kwargs)` | Check if element exists (1s timeout, no error) |
-| `click_button(auto_id=...)` | Already has internal `wait("visible", timeout=10)` |
-| `click_element(**kwargs)` | Already has internal `wait("visible", timeout=10)` |
-| `type_text(text, auto_id=...)` | Already has internal `wait("visible", timeout=10)` |
-
-### 4. Allure Decorators — Full Usage
-
-Use rich Allure metadata for better report filtering and traceability:
-
-```python
-@allure.suite("UI Tests")
-@allure.feature("E-Admin - Connection")
-@allure.story("HSM Connection Workflow")              # User story
-@allure.tag("e-admin", "windows", "ui")               # Tags for filtering
-@allure.description("Verifies E-Admin can connect...") # Detailed description
-@allure.link("https://jira.com/HSM-101", name="HSM-101") # Link to ticket
-@pytest.mark.ui
-@pytest.mark.e_admin
-class TestEAdminConnection:
-
-    @allure.title("E-Admin - Verify Connection")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @pytest.mark.smoke
-    @pytest.mark.critical
-    def test_connect_and_load_dashboard(self):
-        ...
-```
-
-| Decorator | Purpose | Where |
-|-----------|---------|-------|
-| `@allure.suite` | Top-level grouping | Class |
-| `@allure.feature` | Feature area | Class |
-| `@allure.story` | User story / workflow | Class |
-| `@allure.tag` | Filterable tags | Class |
-| `@allure.description` | Detailed test description | Class or method |
-| `@allure.link` | Link to Jira/Kiwi ticket | Class or method |
-| `@allure.title` | Test display name | Method |
-| `@allure.severity` | BLOCKER / CRITICAL / NORMAL / MINOR / TRIVIAL | Method |
-
-### 5. Descriptive Assertion Messages
-
-Always provide failure context in assertions:
-
-```python
-# BAD — unhelpful on failure
-assert driver.main_window.is_visible()
-
-# GOOD — clear failure message
-assert driver.main_window.is_visible(), (
-    "E-Admin main window is not visible after launch"
-)
-```
-
-### 6. COM Threading (Windows UI Tests)
-
-COM initialization **must** run before pywinauto is imported. Place it in `tests/ui/conftest.py`, **not** in individual test files:
-
-```python
-# tests/ui/conftest.py — runs before any test in tests/ui/
-import ctypes
-try:
-    ctypes.windll.ole32.CoInitializeEx(None, 0x2)  # COINIT_APARTMENTTHREADED
-except OSError:
-    pass
-```
-
-### 7. Auto-Screenshot on Failure
-
-The framework automatically captures screenshots when tests fail at **two levels**:
-
-| Level | Source | Allure Name | Handled By |
-|-------|--------|-------------|------------|
-| Desktop (full screen) | `mss` | `FAILURE_{test_name}` | `plugin.py` (auto) |
-| Window (app only) | `UIDriver.take_screenshot()` | `FAIL_window_{test_name}` | `tests/ui/conftest.py` (auto) |
-
-No manual setup needed — both hooks run automatically.
-
-### 8. Log Format — No ANSI Colors
-
-Logs are configured with `--color=no` in `pyproject.toml` to ensure clean output for log aggregation tools (Grafana Alloy, ELK, etc.):
+## Project Structure
 
 ```
-2026-02-26 10:30:15 [INFO] E-Admin launched successfully
-2026-02-26 10:30:16 [INFO] Connect button clicked
+e2e_test_framework/
+├── sphere_e2e_test_framework/              # Core framework (pip-installable)
+│   ├── plugin/                      # pytest plugin (auto-registered subpackage)
+│   │   ├── __init__.py              # Re-exports hooks/fixtures for backward compat
+│   │   ├── config.py                # Config loading, env_overrides, placeholders
+│   │   ├── hooks.py                 # pytest hooks + screenshot capture
+│   │   ├── fixtures.py              # config, evidence, console, ui_app fixtures
+│   │   ├── kiwi_hooks.py            # Kiwi TCMS filter/push helpers
+│   │   └── metrics.py               # Prometheus metrics push
+│   ├── driver/                      # Infrastructure modules
+│   │   ├── base.py                  # DriverProtocol (runtime-checkable interface)
+│   │   ├── ui_driver.py             # pywinauto wrapper (configurable timing)
+│   │   ├── evidence.py              # Screenshots, logs, StepTracker
+│   │   ├── console_runner.py        # CLI subprocess wrapper
+│   │   ├── window_monitor.py        # Background popup detection daemon
+│   │   ├── health_check.py          # Pre-session ping + TCP checks
+│   │   ├── smoke_gate.py            # Fail-fast smoke gate mechanism
+│   │   ├── kiwi_tcms.py             # Kiwi TCMS bidirectional sync
+│   │   ├── grafana_push.py          # Prometheus Pushgateway metrics
+│   │   ├── log_collector.py         # External log file collection
+│   │   ├── loki_collector.py        # Grafana Loki remote log queries
+│   │   └── remote_trigger.py        # HTTP client for remote VM agents
+│   ├── flows/                       # Composable test flows
+│   │   ├── base.py                  # FlowContext, Step, Flow
+│   │   └── e_admin.py               # Pre-composed E-Admin flows
+│   ├── steps/                       # Reusable step factories
+│   │   └── e_admin.py               # E-Admin step factories
+│   ├── testing/                     # Conftest abstraction layer
+│   │   ├── conftest_factory.py      # Fixture factories (make_driver_fixture, etc.)
+│   │   ├── conftest_hooks.py        # TCMS dependency-tracking hooks (shared)
+│   │   └── conftest_utils.py        # Helpers: get_tc_label, zip_app_logs
+│   └── pages/                       # Page Object Model
+│       ├── base_page.py             # Generic WinForms base (all apps)
+│       ├── e_admin/                 # E-Admin page classes
+│       │   ├── e_admin_base_page.py # E-Admin navigation base (sidebar, T&C, logout)
+│       │   └── ...                  # 10 page classes inheriting EAdminBasePage
+│       ├── cps/                     # CPS page classes (scaffold)
+│       └── proxy/                   # Proxy page classes (scaffold)
+│
+├── tests/
+│   ├── ui/
+│   │   ├── conftest.py              # Shared hooks (dependency tracking, COM init)
+│   │   ├── e_admin/                 # E-Admin UI tests (reference)
+│   │   ├── cps/                     # CPS tests (see COOKBOOK.md)
+│   │   └── proxy/                   # Proxy tests (see COOKBOOK.md)
+│   ├── console/pkcs11/              # PKCS#11 CLI tests
+│   └── unit/                        # Unit tests (config, factory, decoupling)
+│
+├── config/settings.yaml             # Central configuration
+├── .env                             # Secrets (HSM_IP, passwords) — gitignored
+├── scripts/
+│   ├── setup.bat / setup.sh         # First-time setup
+│   └── inspect_app.py               # UI element inspector
+│
+├── COOKBOOK.md                       # How to add tests for a new app
+├── SETUP_GUIDE.md                   # Environment setup & CI/CD
+└── docs/
+    ├── INTRODUCTION.md              # Architecture overview & onboarding
+    └── remote_agent_guide.md        # Multi-VM remote agent setup
 ```
 
-> If you need terminal colors for local dev, override with: `pytest --color=yes`
+---
 
-### Complete Test Example
+## Writing a Test
 
 ```python
 """
-E-Admin UI Test - Connection and Dashboard Verification
+E-Admin UI Test — Key Ceremony (FIPS)
 
-Run:
-    pytest tests/ui/test_e_admin.py -v
-    pytest -m "smoke and e_admin" -v
+Run: pytest tests/ui/e_admin/test_TC-37509_KeyCeremonyFIPS.py -v -s
 """
 import logging
 
 import allure
 import pytest
 
-from hsm_test_framework import tracked_step
+from sphere_e2e_test_framework.pages.e_admin import LoginPage, DashboardPage
 
 logger = logging.getLogger(__name__)
 
 
-@allure.suite("UI Tests")
-@allure.feature("E-Admin - Connection")
-@allure.story("HSM Connection Workflow")
+@allure.epic("Sphere HSM")
+@allure.feature("E-Admin - Key Ceremony")
+@allure.suite("Key Ceremony FIPS")
 @allure.tag("e-admin", "windows", "ui")
 @pytest.mark.ui
 @pytest.mark.e_admin
-class TestEAdminConnection:
+@pytest.mark.tcms(case_id=37509)
+class TestKeyCeremonyFIPS:
 
     @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence):
-        """Wire shared fixtures into test instance."""
+    def setup(self, e_admin_driver, evidence, e_admin_config):
         self.driver = e_admin_driver
         self.evidence = evidence
+        self.config = e_admin_config
         yield
 
-    @allure.title("E-Admin - Verify Connection and Dashboard Load")
+    @allure.title("Execute FIPS Key Ceremony")
     @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description(
-        "Verifies that E-Admin application can:\n"
-        "1. Launch and become visible\n"
-        "2. Connect to HSM via Connect button\n"
-        "3. Dismiss popups and confirm with OK\n"
-        "4. Load dashboard successfully"
-    )
-    @pytest.mark.smoke
     @pytest.mark.critical
-    def test_connect_and_load_dashboard(self):
-        """Open E-Admin, connect, click OK, verify dashboard loads."""
-        driver = self.driver
-        evidence = self.evidence
+    def test_key_ceremony_fips(self):
+        login = LoginPage(self.driver, self.evidence)
 
-        with tracked_step(evidence, driver, "Verify app is visible"):
-            assert driver.main_window.is_visible(), (
-                "E-Admin main window is not visible after launch"
-            )
-            logger.info("E-Admin launched successfully")
-
-        with tracked_step(evidence, driver, "Click Connect button"):
-            driver.click_button(auto_id="btnUpdate")
-            logger.info("Connect button clicked")
-
-        driver.wait_for_element(timeout=10, auto_id="btnOKE", control_type="Button")
-
-        with tracked_step(evidence, driver, "Dismiss popup and click OK"):
-            popup = driver.check_popup()
-            if popup:
-                logger.info(f"Popup detected: '{popup.window_text()}'")
-            driver.click_button(auto_id="btnOKE")
-            logger.info("OK button clicked")
-
-        driver.refresh_window()
-
-        with tracked_step(evidence, driver, "Verify dashboard loaded"):
-            assert driver.main_window.is_visible(), (
-                "E-Admin window not visible after connection"
-            )
-            logger.info("Dashboard loaded successfully")
+        # Page objects use fluent navigation — methods return next page
+        dashboard = login.connect_to_hsm(step_name="Connect to HSM")
+        dashboard.verify_connected(step_name="Verify connection")
 ```
+
+### Key Patterns
+
+- **Page Object Model** — Each UI screen is a class extending `BasePage` (generic WinForms) or an app-specific base like `EAdminBasePage`
+- **`_step()` context manager** — Wraps actions with Allure steps + auto-screenshots
+- **Fluent navigation** — Page methods return the next page object
+- **`tracked_step()`** — Combines `allure.step()` + `StepTracker` in one call
+- **Explicit waits** — Use `driver.wait_for_element()`, never `time.sleep()`
 
 ---
 
-## TCMS Integration & Test Documentation Workflow
+## Running Tests
 
-This framework uses a **two-level documentation model**: high-level test procedures live in Kiwi TCMS (written in Given/When/Then format), while granular automation code stays in Python. The two are linked via `@pytest.mark.tcms(case_id=X)`.
+| Command | What it does |
+|---------|-------------|
+| `pytest tests/ui/e_admin/ -v` | Run all E-Admin tests |
+| `pytest -m smoke -v` | Run smoke tests only |
+| `pytest -m "e_admin and critical" -v` | E-Admin critical tests |
+| `pytest -m cps -v` | Run CPS tests |
+| `pytest -k "KeyCeremony" -v` | Filter by keyword |
+| `pytest --kiwi-run-id=123` | Run linked to TCMS TestRun #123 |
+| `pytest --run-id sprint_42` | Tag run for Grafana metrics |
+| `pytest --skip-health-check` | Skip pre-execution health checks |
 
-### Why Not BDD/Gherkin in Python?
-
-Gherkin is used as a **documentation template in TCMS**, not as executable `.feature` files. Reasons:
-
-- **Complex workflows** (e.g. key ceremony) have 20-30 granular UI steps — Gherkin forces 1:1 step definitions, creating double maintenance with no added value.
-- **Mixed test types** — UI, console, PKCS#11 (Java/Go/C++/GTest) each have different patterns. BDD adds a layer that fits none of them well.
-- `tracked_step` + Allure decorators already provide structured, documented, evidence-rich test steps without a BDD layer.
-
-### The Two-Level Model
-
-```
-┌───────────────────────────────────────────────────────────┐
-│  KIWI TCMS — Test Case (Source of Truth for Procedure)    │
-│                                                           │
-│  Summary: [E2E][eAdmin][Connect] Connect to HSM simulator │
-│  Text:                                                    │
-│    Given eAdmin is launched on Windows client              │
-│    When operator clicks Connect and confirms popup         │
-│    Then dashboard loads and HSM status shows Connected     │
-│                                                           │
-│  → High-level, business readable, 3-5 lines               │
-└────────────────────────┬──────────────────────────────────┘
-                         │  @pytest.mark.tcms(case_id=42)
-                         │
-┌────────────────────────▼──────────────────────────────────┐
-│  Python Test — Automation Code                            │
-│                                                           │
-│  with tracked_step("Given: eAdmin launched"):             │
-│      assert driver.main_window.is_visible()               │
-│                                                           │
-│  with tracked_step("When: Connect and confirm popup"):    │
-│      driver.click_button(auto_id="btnConnect")            │
-│      driver.wait_for_element(auto_id="btnOK")             │
-│      driver.click_button(auto_id="btnOK")                 │
-│                                                           │
-│  with tracked_step("Then: Dashboard loaded"):             │
-│      status = driver.get_text(auto_id="lblStatus")        │
-│      assert "Connected" in status                         │
-│                                                           │
-│  → Granular steps, auto-screenshots at every tracked_step │
-└────────────────────────┬──────────────────────────────────┘
-                         │
-                         ▼
-┌───────────────────────────────────────────────────────────┐
-│  Allure Report — Auto-Generated Evidence                  │
-│                                                           │
-│  Step 1: Given: eAdmin launched .............. PASS [img] │
-│  Step 2: When: Connect and confirm popup ..... PASS [img] │
-│  Step 3: Then: Dashboard loaded .............. PASS [img] │
-│                                                           │
-│  → Screenshots, logs, timing — all automatic              │
-└───────────────────────────────────────────────────────────┘
-```
-
-### TCMS Naming Convention → Allure Mapping
-
-TCMS Summary uses bracket tags: `[Test Level][Component][Feature] Test Name`
-
-These map directly to Allure decorators:
-
-| TCMS Summary Tag | Allure Decorator | Purpose |
-|------------------|-----------------|---------|
-| `[E2E]` | `@allure.suite("E2E")` | Top-level grouping |
-| `[eAdmin]` / `[PKCS11]` | `@allure.feature("eAdmin")` | Component |
-| `[Connect]` / `[Sign]` | `@allure.story("Connect")` | Feature / journey |
-| Test name | `@allure.title("...")` | Display name in report |
-| Text field (Given/When/Then) | `@allure.description("...")` | Procedure summary |
-| Case ID | `@pytest.mark.tcms(case_id=X)` | Bidirectional link |
-| TCMS Tags | `@allure.tag(...)` + `@pytest.mark.<marker>` | Filtering |
-
-### Complete Example: UI Test with TCMS Link
-
-```python
-# TCMS Case #42:
-#   Summary: [E2E][eAdmin][Connect] Connect to HSM simulator
-#   Text:
-#     Given eAdmin is launched on Windows client
-#     When operator clicks Connect and confirms popup
-#     Then dashboard loads and HSM status shows Connected
-
-@allure.suite("E2E")
-@allure.feature("eAdmin")
-@allure.story("Connect")
-@allure.tag("e-admin", "windows", "ui")
-@pytest.mark.ui
-@pytest.mark.e_admin
-@pytest.mark.tcms(case_id=42)
-class TestEAdminConnect:
-
-    @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence):
-        self.driver = e_admin_driver
-        self.evidence = evidence
-        yield
-
-    @allure.title("Connect to HSM simulator")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description(
-        "Given eAdmin is launched on Windows client\n"
-        "When operator clicks Connect and confirms popup\n"
-        "Then dashboard loads and HSM status shows Connected"
-    )
-    @pytest.mark.smoke
-    @pytest.mark.critical
-    def test_connect_to_hsm(self):
-        driver = self.driver
-        evidence = self.evidence
-
-        # Given
-        with tracked_step(evidence, driver, "Given: eAdmin launched"):
-            assert driver.main_window.is_visible(), (
-                "eAdmin main window is not visible after launch"
-            )
-
-        # When
-        with tracked_step(evidence, driver, "When: Connect and confirm popup"):
-            driver.click_button(auto_id="btnUpdate")
-            driver.wait_for_element(timeout=10, auto_id="btnOKE")
-            driver.click_button(auto_id="btnOKE")
-
-        driver.refresh_window()
-
-        # Then
-        with tracked_step(evidence, driver, "Then: Dashboard loaded"):
-            assert driver.main_window.is_visible(), (
-                "eAdmin window not visible after connection"
-            )
-```
-
-### Complete Example: Console/PKCS#11 Test with TCMS Link
-
-```python
-# TCMS Case #55:
-#   Summary: [E2E][PKCS11][Sign] RSA sign + verify via HSM key
-#   Text:
-#     Given HSM is connected and RSA key 'TestRSA' exists
-#     When client sends C_Sign with RSA-PSS mechanism
-#     Then signature is non-empty and C_Verify returns CKR_OK
-
-@allure.suite("E2E")
-@allure.feature("PKCS11")
-@allure.story("Sign")
-@pytest.mark.console
-@pytest.mark.pkcs11
-@pytest.mark.tcms(case_id=55)
-class TestPKCS11Sign:
-
-    @allure.title("RSA sign + verify via HSM key")
-    @allure.severity(allure.severity_level.CRITICAL)
-    @allure.description(
-        "Given HSM is connected and RSA key 'TestRSA' exists\n"
-        "When client sends C_Sign with RSA-PSS mechanism\n"
-        "Then signature is non-empty and C_Verify returns CKR_OK"
-    )
-    def test_rsa_sign_verify(self, config, console, evidence):
-        tool = resolve_platform_config(config["console_tools"]["pkcs11_native"])
-
-        # Given
-        result = console.run(tool["command"], ["--list-objects"])
-        result.assert_success("HSM must be connected")
-        result.assert_output_contains("TestRSA", case_sensitive=False)
-        evidence.attach_text(result.output, "given_key_listing")
-
-        # When
-        sign_result = console.run(tool["command"], [
-            "--sign", "--mechanism", "RSA-PSS",
-            "--id", "TestRSA", "--input-file", "test_data.bin",
-        ])
-        sign_result.assert_success("C_Sign should succeed")
-        evidence.attach_text(sign_result.output, "when_sign_output")
-
-        # Then
-        assert len(sign_result.stdout.strip()) > 0, (
-            "Signature output must be non-empty"
-        )
-        verify_result = console.run(tool["command"], [
-            "--verify", "--mechanism", "RSA-PSS",
-            "--id", "TestRSA", "--signature-file", "sig.bin",
-        ])
-        verify_result.assert_success("C_Verify must return CKR_OK")
-        evidence.attach_text(verify_result.output, "then_verify_output")
-```
-
-### `tracked_step` Labeling Convention
-
-Use Given/When/Then prefixes in step labels to match TCMS procedure:
-
-```python
-# Simple: one tracked_step per Given/When/Then
-with tracked_step(evidence, driver, "Given: HSM connected"):
-    ...
-with tracked_step(evidence, driver, "When: Generate RSA-2048 key"):
-    ...
-with tracked_step(evidence, driver, "Then: Key appears in list"):
-    ...
-
-# Complex: group sub-steps under one Given/When/Then
-with tracked_step(evidence, driver, "When: Execute key ceremony"):
-    driver.click_button(auto_id="btnKeyMgmt")
-    driver.select_combobox(auto_id="cmbKeyType", value="RSA-2048")
-    driver.type_text("MasterKey", auto_id="txtLabel")
-    driver.click_button(auto_id="btnGenerate")
-    driver.wait_for_element(auto_id="lblSuccess", timeout=30)
-    driver.click_button(auto_id="btnConfirm")
-```
-
-### Oracle Rules for Assertions
-
-Every `Then` / assertion must be (per TCMS guidelines):
-
-| Rule | Bad Example | Good Example |
-|------|-------------|--------------|
-| **Objective** | `"looks correct"` | `"Connected" in status_text` |
-| **Deterministic** | `"should work"` | `result.returncode == 0` |
-| **Verifiable by evidence** | `"seems fine"` | Screenshot + text attachment |
-| **Not visual/subjective** | `"UI looks normal"` | `element_exists(auto_id="lblStatus")` |
-
-```python
-# BAD — weak oracle
-assert driver.main_window.is_visible()
-
-# GOOD — specific, with evidence
-status = driver.get_text(auto_id="lblStatus")
-assert "Connected" in status, (
-    f"Expected 'Connected' in status, got: '{status}'"
-)
-```
-
-### Where to Put What
-
-| Information | Where | Why |
-|-------------|-------|-----|
-| **Test procedure** (what to test) | TCMS Test Case text field | Source of truth, shared with team |
-| **Procedure summary** | `@allure.description(...)` | Quick reference in Allure report |
-| **Implementation** (how to automate) | Python test code with `tracked_step` | Executable, maintainable |
-| **Evidence** (proof of execution) | Allure report (auto-generated) | Screenshots, logs, timing per step |
-| **Traceability** | `@pytest.mark.tcms(case_id=X)` | Links Python ↔ TCMS bidirectionally |
-
-### TCMS Bidirectional Flow (`--kiwi-run-id`)
-
-When you run `pytest --kiwi-run-id=123`, the framework executes a **bidirectional sync** between Kiwi TCMS and your test suite. Here is the complete flow:
-
-```
-pytest --kiwi-run-id=123
-
- PHASE 1: PULL (pytest_configure)
- ─────────────────────────────────────────────────────────────
- │
- │  1. Connect to Kiwi TCMS via XML-RPC
- │  2. Fetch TestRun #123
- │  3. Pull all TestCase entries from the run
- │     → Returns: [{id: 42, summary: "[E2E][eAdmin][Connect]...",
- │                   execution_id: 501}, ...]
- │
- ▼
- PHASE 2: MATCH (pytest_collection_modifyitems)
- ─────────────────────────────────────────────────────────────
- │
- │  Scan all collected Python tests for @pytest.mark.tcms(case_id=X)
- │
- │  For each Python test:
- │    Has @pytest.mark.tcms(case_id=42)?
- │      → case_id 42 exists in TestRun #123?
- │        YES → SELECTED (will execute, linked to TCMS case)
- │        NO  → DESELECTED (case_id not in this run)
- │    No @pytest.mark.tcms?
- │      → DESELECTED (no TCMS link)
- │
- │  For each TCMS case in the run:
- │    Matched by any Python test?
- │      YES → will be updated with PASSED/FAILED after execution
- │      NO  → logged as WARNING: "no automation test available"
- │
- │  Example output:
- │    Kiwi filter: 6 matched, 4 deselected, 2 TCMS cases without automation
- │    WARNING: TCMS COVERAGE GAP: 2 test case(s) have no matching test
- │      - Case #50: [E2E][eAdmin][KeyCeremony] Full key ceremony
- │      - Case #51: [E2E][CPS][Provision] Certificate provisioning
- │
- ▼
- PHASE 3: EXECUTE (pytest runs selected tests)
- ─────────────────────────────────────────────────────────────
- │
- │  Only matched tests run. Each test executes normally with
- │  tracked_step, evidence collection, screenshots, etc.
- │
- ▼
- PHASE 4: PUSH (pytest_sessionfinish)
- ─────────────────────────────────────────────────────────────
- │
- │  For each executed test:
- │    → Update TCMS TestExecution status: PASSED or FAILED
- │    → Attach comment with error details (if failed)
- │    → Attach evidence files (screenshots, logs)
- │
- │  For each unmatched TCMS case:
- │    → Update TCMS TestExecution status: BLOCKED
- │    → Add comment: "No automation test found. Add
- │      @pytest.mark.tcms(case_id=X) to link it."
- │
- │  Log summary:
- │    ════════════════════════════════════════════
- │    Kiwi TCMS Bidirectional Summary
- │      Executed (matched):  6
- │      No automation test:  2
- │        BLOCKED  Case #50: [E2E][eAdmin][KeyCeremony]...
- │        BLOCKED  Case #51: [E2E][CPS][Provision]...
- │    ════════════════════════════════════════════
-```
-
-**Key design decisions:**
-
-| Decision | Rationale |
-|----------|-----------|
-| Only `@pytest.mark.tcms(case_id=X)` is used for matching | TCMS summaries use bracket-tag format (`[E2E][PKCS11][Sign]...`) which never matches Python function names. Explicit linking is reliable. |
-| Unmatched TCMS cases are marked BLOCKED (not silently ignored) | Prevents false confidence. The TCMS run clearly shows which cases have no automation yet. |
-| Unmatched Python tests are deselected (not skipped) | They don't belong to this TestRun. They still run normally without `--kiwi-run-id`. |
-| Comment is added to BLOCKED executions | Tells the TCMS reader exactly what to do: add the marker to a Python test. |
-
-**Usage examples:**
+### View Reports
 
 ```bash
-# Run tests linked to TCMS TestRun #123
-pytest --kiwi-run-id=123
-
-# Same, but also enable smoke gate
-pytest --kiwi-run-id=123 --smoke-gate
-
-# Override plan_id from settings.yaml
-pytest --kiwi-run-id=123 --kiwi-plan-id=50
-
-# Push-only mode: create a new run and push all results
-pytest --kiwi-create-run
-
-# Push-only with specific plan
-pytest --kiwi-create-run --kiwi-plan-id=50
-```
-
-**How to link a Python test to TCMS:**
-
-```python
-# Step 1: Find the TCMS TestCase ID (visible in Kiwi TCMS URL or list)
-# Step 2: Add the marker to your test class or method
-
-@pytest.mark.tcms(case_id=42)
-class TestEAdminConnect:
-    ...
-
-# Or on a specific method:
-class TestPKCS11:
-    @pytest.mark.tcms(case_id=55)
-    def test_rsa_sign_verify(self):
-        ...
+npx allure open evidence/allure-results      # Allure 3 (recommended)
+allure serve evidence/allure-results          # Allure 2 (requires Java)
 ```
 
 ---
 
-## Grafana Metrics & Run Tracking (`--run-id`)
+## Available Fixtures
 
-Every test session pushes metrics to Prometheus Pushgateway for Grafana visualization. Each run is uniquely identified by a `run_id` label, so previous runs are **never overwritten** — all historical data is preserved.
+### Framework Fixtures (auto-provided by the plugin package)
 
-### How It Works
+| Fixture | Scope | Description |
+|---------|-------|-------------|
+| `config` | session | `settings.yaml` loaded as Python dict |
+| `evidence` | per-test | Screenshot + log evidence collector |
+| `console` | per-test | `ConsoleRunner` for CLI commands |
+| `log_collector` | per-test | `LogCollector` linked to evidence dir |
 
-```
-pytest tests/ --run-id sprint_42
-│
-├── All test files execute in one session
-├── Every test result recorded with run_id="sprint_42"
-├── Suite summary (pass rate, coverage, duration) tagged with run_id="sprint_42"
-└── pushadd_to_gateway → additive push (does NOT overwrite previous runs)
+### E-Admin Fixtures (from `tests/ui/e_admin/conftest.py`)
 
-In Grafana:
-  Dropdown "Test Run" → select "sprint_42" → see that run's results
-  Dropdown "Test Run" → select "All" → see all runs on trend charts
-```
-
-### Command Reference
-
-| Scenario | Command |
-|----------|---------|
-| All tests, auto-generated run_id | `pytest tests/ -v` |
-| All tests, named run_id | `pytest tests/ -v --run-id sprint_42` |
-| UI tests only | `pytest tests/ui/ -v --run-id ui_regression_01` |
-| Console tests only | `pytest tests/console/ -v --run-id pkcs11_check_01` |
-| By marker | `pytest -m smoke -v --run-id smoke_daily` |
-| Split runs, same run_id (results merge) | `pytest tests/ui/ --run-id sprint_42` then `pytest tests/console/ --run-id sprint_42` |
-
-### Combined with Kiwi TCMS Bidirectional
-
-`--run-id` and `--kiwi-run-id` work together — Kiwi handles test case management, Grafana handles metrics:
-
-```bash
-# Full bidirectional + metrics tracking
-pytest tests/ -v --kiwi-run-id 25 --run-id kiwi_run_25
-
-# With smoke gate
-pytest tests/ -v --kiwi-run-id 25 --run-id kiwi_run_25 --smoke-gate
-
-# With plan override
-pytest tests/ -v --kiwi-run-id 25 --kiwi-plan-id 50 --run-id kiwi_run_25
-```
-
-**What happens with `--kiwi-run-id 25 --run-id kiwi_run_25`:**
-
-| Step | Kiwi TCMS | Grafana |
-|------|-----------|---------|
-| Pull test cases from TestRun #25 | Filters to matched tests | — |
-| Execute matched tests | — | Records each test result |
-| Push PASSED/FAILED | Updates TCMS executions | — |
-| Mark unmatched → BLOCKED | Updates TCMS executions | Counted as `blocked` in metrics |
-| Push metrics | — | `pushadd_to_gateway(run_id="kiwi_run_25")` |
-
-**Tip:** Use the Kiwi run ID in the `--run-id` name (e.g. `kiwi_run_25`) so Grafana and TCMS are easy to cross-reference.
-
-### All CLI Flags Summary
-
-| Flag | Type | Default | Purpose |
-|------|------|---------|---------|
-| `--run-id` | `str` | Auto-generated (`run_YYYYMMDD_HHMMSS`) | Unique run ID for Grafana metrics isolation |
-| `--kiwi-run-id` | `int` | None | Kiwi TCMS TestRun ID for bidirectional sync |
-| `--kiwi-plan-id` | `int` | From settings.yaml | Override TCMS plan_id |
-| `--kiwi-create-run` | flag | False | Create a new TCMS TestRun and push results |
-| `--smoke-gate` | flag | False | Abort remaining tests if any smoke test fails |
-| `--skip-health-check` | flag | False | Skip pre-execution environment health checks |
-
-### Grafana Dashboard
-
-Import `config/grafana-dashboard.json` into Grafana. The dashboard includes:
-
-| Section | Panels | Filtered by run_id |
-|---------|--------|--------------------|
-| **Current Status** | Pass Rate gauge, Coverage gauge, Total/Passed/Failed/Blocked stats, Duration, Last Run, Coverage Breakdown pie chart | Yes — shows selected run |
-| **Historical Trends** | Test Results Over Time, Pass Rate & Coverage Over Time, Suite Duration Over Time, Individual Test Duration | Yes — legend shows `{{run_id}}` per series |
-
-The **"Test Run"** dropdown at the top lets you:
-- Select a specific run → Current Status panels show that run's data
-- Select "All" → Trend panels show all runs for comparison
-
-### Manual Metrics Sync (Kiwi → Grafana)
-
-Use `demo/sync_metrics.py` to push Kiwi TCMS results to Grafana without running pytest:
-
-```bash
-# One-shot sync
-python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25
-
-# Watch mode (sync every 30s)
-python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25 --watch
-
-# Custom interval
-python demo/sync_metrics.py --run-id 25 --metrics-run-id kiwi_sync_25 --watch --interval 10
-```
-
-### Cleanup Old Runs
-
-To delete metrics for a specific run from Pushgateway:
-
-```python
-from hsm_test_framework.grafana_push import MetricsPusher
-
-pusher = MetricsPusher(
-    pushgateway_url="http://10.88.1.14:9091",
-    run_id="old_run_to_delete",
-)
-pusher.delete_run()
-```
+| Fixture | Scope | Description |
+|---------|-------|-------------|
+| `e_admin_config` | session | App config from `settings.yaml` |
+| `e_admin_driver` | per-test | UIDriver instance (launches app) |
+| `window_monitor` | per-test (autouse) | Detects unexpected popup windows |
+| `collect_app_logs` | per-test (autouse) | Zips AppLogs into evidence |
+| `collect_remote_logs` | per-test (autouse) | Queries Loki for remote VM logs |
 
 ---
 
-## PKCS#11 Consumer Repo Structure
+## Markers
 
-```
-pkcs11-tests/
-├── bin/                              # Pre-compiled binaries
-│   ├── pkcs11-keygen.jar             # Java (ready)
-│   ├── pkcs11_encrypt                # C++ (ready)
-│   └── ...
-├── src/                              # Source code (if needs build)
-│   ├── java/signing/pom.xml          # Java Maven
-│   ├── go/slot/main.go              # Go source
-│   └── cpp/gtest_crypto/Makefile     # GTest + Makefile
-├── config/settings.yaml              # Paths, log locations, build flags
-├── tests/console/
-│   ├── test_pkcs11_java.py           # Java wrappers (5 tests)
-│   ├── test_pkcs11_cpp.py            # C++ wrappers (6 tests)
-│   ├── test_pkcs11_go.py             # Go wrappers (4 tests)
-│   └── test_pkcs11_gtest.py          # GTest wrappers (4 tests)
-├── scripts/
-│   ├── build.sh / build.bat          # Compile Java/Go/GTest
-│   └── run_tests.sh / run_tests.bat  # Run tests by marker
-├── logs/                             # Tool log files (auto-collected)
-├── evidence/                         # Test evidence (auto-generated)
-├── conftest.py                       # Auto-build + tool_config fixture
-├── Jenkinsfile                       # Build → Test → Report pipeline
-└── requirements.txt                  # One line: hsm-test-framework
-```
+| Marker | Description |
+|--------|-------------|
+| `ui` | Windows UI automation tests (auto-skipped on Linux) |
+| `console` | Console/CLI tests |
+| `pkcs11` | PKCS#11 related tests |
+| `e_admin` | E-Admin application tests |
+| `cps` | CPS application tests |
+| `proxy` | Proxy application tests |
+| `smoke` | Quick verification tests |
+| `critical` | Critical path tests |
+| `regression` | Full regression suite |
+| `slow` | Tests > 30 seconds |
+| `tcms(case_id=N)` | Link to Kiwi TCMS TestCase |
+| `depends_on(*ids)` | Skip if dependency TC did not pass |
+| `order(index)` | Execution order (pytest-ordering) |
 
 ---
 
-## Evidence Flow
+## Key Concepts
 
-Every test run produces a complete evidence trail:
+### Page Object Model (POM)
 
-```
-Test Execution
-    │
-    ├─► stdout / stderr capture         → Allure report (text attachment)
-    ├─► External log files              → Allure report (auto-collected via LogCollector)
-    ├─► GTest XML reports               → Allure report (parsed summary + raw XML)
-    ├─► Screenshots (per step)          → Allure report (embedded PNG)
-    ├─► Screenshots (on failure)        → Allure report (auto-captured)
-    ├─► Test execution logs             → evidence/ folder (timestamped)
-    │
-    ├─► JUnit XML                       → Jenkins test results
-    ├─► Kiwi TCMS sync                  → Test case management (auto-reported)
-    └─► Prometheus metrics              → Grafana dashboard (pass rate, trends)
-```
+Each UI screen → one class in `sphere_e2e_test_framework/pages/<app>/`. Extends `BasePage`
+(generic WinForms helpers) or an app-specific base like `EAdminBasePage` (E-Admin navigation).
+Uses `_step()` for evidence-tracked actions, returns next page for fluent navigation.
+
+### Evidence & tracked_step
+
+Every `with self._step("description"):` block creates an Allure step with an
+auto-screenshot. On test failure, a desktop + window screenshot is captured automatically.
+
+### TCMS Integration
+
+Mark tests with `@pytest.mark.tcms(case_id=N)`. Run with `--kiwi-run-id=X` for
+bidirectional sync: framework pulls cases from TCMS, runs matched tests, pushes
+PASSED/FAILED/BLOCKED back.
+
+### Health Checks
+
+Pre-execution ping + TCP checks ensure HSM is reachable before tests start.
+Configured in `settings.yaml` under `health_check:`. Skip with `--skip-health-check`.
+
+### Grafana Metrics
+
+Test results are pushed to Prometheus Pushgateway with `--run-id` labels.
+Import `config/grafana-dashboard.json` into Grafana for pass rate, trends, and duration panels.
 
 ---
 
-## Documentation
+## Adding Tests for a New Application (CPS, Proxy, etc.)
+
+See **[COOKBOOK.md](COOKBOOK.md)** for a step-by-step guide covering:
+1. Discover UI elements with `inspect_app.py`
+2. Add app config to `settings.yaml`
+3. Create page objects
+4. Write conftest fixtures
+5. Write your first test
+
+---
+
+## Further Reading
 
 | Document | Contents |
 |----------|----------|
-| **[SETUP_GUIDE.md](SETUP_GUIDE.md)** | Full setup instructions, prerequisites, Jenkins/Grafana/TCMS configuration, PKCS#11 consumer repo setup, per-part execution, UI element discovery, troubleshooting |
-| **[PRESENTATION.md](PRESENTATION.md)** | Executive summary for managers — problem, solution, architecture, integration flow, effort estimate, demo path |
-| **[PLAN.md](PLAN.md)** | Prioritized action plan, TCMS convention, effort vs impact analysis |
-| **[config/settings.yaml](config/settings.yaml)** | Configuration reference with inline comments |
-| **[examples/consumer-repo-template/](examples/consumer-repo-template/)** | Boilerplate for UI + general console test repos |
-| **[examples/pkcs11-consumer-template/](examples/pkcs11-consumer-template/)** | Boilerplate for PKCS#11 test repos (Java, C++, Go, GTest) with build scripts |
+| [COOKBOOK.md](COOKBOOK.md) | Step-by-step: adding tests for a new app |
+| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Prerequisites, Jenkins CI, TCMS, Grafana setup |
+| [docs/INTRODUCTION.md](docs/INTRODUCTION.md) | Architecture overview & onboarding |
+| [docs/remote_agent_guide.md](docs/remote_agent_guide.md) | Multi-VM remote agent setup |
+| [config/settings.yaml](config/settings.yaml) | Full configuration reference (inline comments) |

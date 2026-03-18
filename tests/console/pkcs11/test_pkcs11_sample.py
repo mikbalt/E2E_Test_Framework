@@ -13,7 +13,7 @@ import logging
 import allure
 import pytest
 
-from hsm_test_framework import ConsoleRunner, resolve_platform_config
+from sphere_e2e_test_framework import ConsoleRunner, resolve_platform_config
 
 logger = logging.getLogger(__name__)
 

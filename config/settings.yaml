@@ -1,8 +1,38 @@
 # =============================================================================
-# HSM Test Framework - Configuration
+# Sphere E2E Test Framework - Configuration
 # =============================================================================
 # Platform-aware: paths auto-resolve based on OS.
 # Override via environment variables for CI/CD flexibility.
+
+# --- Data-driven env var → config path mapping ---
+# Each key is an environment variable name. The value is a dotted config
+# path with an optional :type suffix (int, bool). At load time, if the env
+# var is set, its value is written into the config dict at the given path.
+env_overrides:
+  HSM_IP: "apps.e_admin.connection.ip"
+  HSM_PORT: "apps.e_admin.connection.port"
+  E_ADMIN_PATH: "apps.e_admin.path"
+  E_ADMIN_APP_LOGS: "apps.e_admin.app_logs_dir"
+  PUSHGATEWAY_URL: "metrics.pushgateway_url"
+  LOKI_URL: "remote_logs.loki_url"
+  TCMS_API_URL: "kiwi_tcms.url"
+  KIWI_PLAN_ID: "kiwi_tcms.plan_id:int"
+  KIWI_BUILD_ID: "kiwi_tcms.build_id:int"
+
+# --- Data-driven env var → list item fields ---
+# For config values inside lists (e.g. health_check.checks[]), use
+# env_overrides_list. Each key is a dotted path to a list. Values map
+# env vars to field specs: "field_name" or "field_name:type?condition".
+env_overrides_list:
+  health_check.checks:
+    HSM_IP: "host"
+    HSM_PORT: "port:int?type=tcp"
+
+# --- Page Timeout ---
+# Maximum seconds to wait for UI elements (HSM operations can exceed 2 min).
+# Override via env var: PAGE_TIMEOUT=600 (for slow VMs / long HSM ops).
+# Default: 300 seconds (5 minutes).
+# page_timeout: 300
 
 # --- Application Under Test (Windows only) ---
 apps:
@@ -26,6 +56,38 @@ apps:
     connection:
       ip: "${HSM_IP}"                # Required — set in .env
       port: "${HSM_PORT}"           # Required — set in .env
+
+  # CPS Application (uncomment when ready)
+  # cps:
+  #   path: "${CPS_APP_PATH}"
+  #   class_name: "WindowsForms10\\.Window.*"
+  #   startup_wait: 5
+  #   backend: "uia"
+  #   app_logs_dir: "${CPS_APP_LOGS}"
+  #   popup_dismiss_buttons: ["OK", "Yes", "Close"]
+  #   popup_dismiss_auto_ids: ["2"]
+  #   window_monitor:
+  #     enabled: true
+  #     interval: 1.0
+  #   connection:
+  #     ip: "${HSM_IP}"
+  #     port: "${HSM_PORT}"
+
+  # Proxy Application (uncomment when ready)
+  # proxy:
+  #   path: "${PROXY_APP_PATH}"
+  #   class_name: "WindowsForms10\\.Window.*"
+  #   startup_wait: 5
+  #   backend: "uia"
+  #   app_logs_dir: "${PROXY_APP_LOGS}"
+  #   popup_dismiss_buttons: ["OK", "Yes", "Close"]
+  #   popup_dismiss_auto_ids: ["2"]
+  #   window_monitor:
+  #     enabled: true
+  #     interval: 1.0
+  #   connection:
+  #     ip: "${HSM_IP}"
+  #     port: "${HSM_PORT}"
 
   # Example: Windows Calculator (for initial testing/demo)
   calculator:
@@ -111,6 +173,8 @@ metrics:
   enabled: true                  # Set true after Prometheus Pushgateway is ready
   pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
   job_name: "E2E_Sphere_HSM"
+  metric_prefix: "hsm"            # Prometheus metric name prefix (keeps hsm_* names)
+  suite_name: "hsm"               # Suite label for record_suite()
   # run_id: Auto-generated per session (override with --run-id CLI flag)
   labels:
     environment: "staging"
