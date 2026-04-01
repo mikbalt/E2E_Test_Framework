@@ -52,7 +52,7 @@ class TestKeyCeremonyNonFIPSFlow:
     @allure.severity(allure.severity_level.CRITICAL)
     @allure.testcase("https://10.88.1.13/case/37515/")
     @pytest.mark.critical
-    @pytest.mark.order(5)
+    @pytest.mark.order(4)
     @pytest.mark.depends_on(37517)
     def test_non_fips_key_ceremony_password(self):
         """Key ceremony Non-FIPS: auto-detects password change need."""

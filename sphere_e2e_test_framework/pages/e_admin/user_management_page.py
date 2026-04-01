@@ -86,6 +86,7 @@ class UserManagementPage(EAdminBasePage):
                     auto_id="cbProfiles", value=profile_name,
                 )
                 logger.info(f"Selected profile: '{profile_name}'")
+            self._snap("create_user_form")
             self.driver.click_button(auto_id="btnCreate")
             message = self.dismiss_ok_with_message()
             logger.info(f"User '{username}' created with profile '{profile_name}'")
@@ -139,6 +140,7 @@ class UserManagementPage(EAdminBasePage):
 
             # Click OK directly on the found element (no second lookup)
             logger.info(f"Sync result: '{message}'")
+            self._snap("sync_result")
             ok_btn.click_input()
 
             # Refresh window reference — the direct click_input() bypasses
@@ -206,9 +208,26 @@ class UserManagementPage(EAdminBasePage):
             self.driver.wait_for_element(
                 timeout=TIMEOUT, auto_id="6", control_type="Button",
             )
+            self._snap("delete_confirm_dialog")
             self.driver.click_button(auto_id="6")
             message = self.dismiss_ok_with_message()
             logger.info(f"User '{username}' deleted: '{message}'")
+            return message
+
+    def unblock_user(self, username, step_name=None):
+        """Select blocked user → click Unblock → confirm Yes → return message."""
+        with self._step(step_name):
+            self._click_user_row(username)
+            time.sleep(0.5)
+            self.driver.click_button(auto_id="btnUnblock")
+            # Confirm Yes on "Are you sure?" dialog
+            self.driver.wait_for_element(
+                timeout=TIMEOUT, auto_id="6", control_type="Button",
+            )
+            self._snap("unblock_confirm_dialog")
+            self.driver.click_button(auto_id="6")
+            message = self.dismiss_ok_with_message()
+            logger.info(f"User '{username}' unblocked: '{message}'")
             return message
 
     def user_exists_in_table(self, username):
@@ -250,3 +269,35 @@ class UserManagementPage(EAdminBasePage):
                 if username in cell:
                     return data["headers"], row
         return data["headers"], None
+
+    _STATUS_KEYWORDS = {"active", "blocked", "locked", "disabled", "inactive"}
+
+    def get_user_status(self, username):
+        """Get the status of a user from the table.
+
+        Looks for a 'Status' column first; falls back to scanning
+        row cells for known status keywords.
+
+        Returns:
+            str or None: Status string (e.g. 'Active', 'Blocked')
+            or None if user not found.
+        """
+        headers, row = self.get_user_row(username)
+        if row is None:
+            return None
+
+        # Try to find a status column by header name
+        for i, h in enumerate(headers):
+            if "status" in h.lower():
+                if i < len(row):
+                    logger.info(f"User '{username}' status='{row[i]}' (col '{h}')")
+                    return row[i]
+
+        # Fallback: scan cells for known status keywords
+        for cell in row:
+            if cell.strip().lower() in self._STATUS_KEYWORDS:
+                logger.info(f"User '{username}' status='{cell}' (cell scan)")
+                return cell
+
+        logger.warning(f"Could not determine status for user '{username}'")
+        return None

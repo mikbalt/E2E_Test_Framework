@@ -48,7 +48,7 @@ class TestHSMResetBySuperUserFlow:
     @allure.title("[E2E][e-admin] HSM Reset by Super User (Flow)")
     @allure.severity(allure.severity_level.CRITICAL)
     @pytest.mark.critical
-    @pytest.mark.order(4)
+    @pytest.mark.order(3)
     @pytest.mark.depends_on(37509)
     def test_hsm_reset_by_super_user(self):
         """Full flow: login → export audit log → re-login → reset → verify."""

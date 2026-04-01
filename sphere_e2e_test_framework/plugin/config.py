@@ -42,12 +42,38 @@ def load_config(config_path=None):
                 logger.info(f"Config loaded from: {path}")
                 _CONFIG_CACHE = _resolve_placeholders(_CONFIG_CACHE)
                 _apply_env_overrides(_CONFIG_CACHE)
+                _validate_config(_CONFIG_CACHE)
                 return _CONFIG_CACHE
 
     logger.warning("No settings.yaml found, using defaults")
     _CONFIG_CACHE = {}
     _apply_env_overrides(_CONFIG_CACHE)
     return _CONFIG_CACHE
+
+
+def _validate_config(cfg):
+    """Validate critical config paths are not empty after placeholder resolution.
+
+    Warns (does not raise) when required values are empty, so tests can still
+    run in environments that only need a subset of the config.
+    """
+    critical_paths = [
+        "apps.e_admin.connection.ip",
+        "apps.e_admin.path",
+    ]
+    for dotted_path in critical_paths:
+        obj = cfg
+        for key in dotted_path.split("."):
+            if isinstance(obj, dict):
+                obj = obj.get(key)
+            else:
+                obj = None
+                break
+        if obj is not None and isinstance(obj, str) and not obj.strip():
+            logger.warning(
+                f"Config value at '{dotted_path}' is empty — "
+                f"check that the corresponding env var is set"
+            )
 
 
 def _resolve_placeholders(obj):

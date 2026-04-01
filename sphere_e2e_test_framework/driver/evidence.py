@@ -18,6 +18,7 @@ Usage:
 import datetime
 import logging
 import os
+import threading
 import time
 from contextlib import contextmanager
 
@@ -36,6 +37,7 @@ class Evidence:
         os.makedirs(self.evidence_dir, exist_ok=True)
 
         self.step_count = 0
+        self._lock = threading.Lock()
         self.log_entries = []
         self.screenshots = []
         self._finalized = False
@@ -59,8 +61,10 @@ class Evidence:
         Allure step integration is handled by tracked_step() or
         manual allure.step() wrapping to avoid double-nesting.
         """
-        self.step_count += 1
-        msg = f"STEP {self.step_count}: {description}"
+        with self._lock:
+            self.step_count += 1
+            count = self.step_count
+        msg = f"STEP {count}: {description}"
         logger.info(msg)
         self.log_entries.append(msg)
 
@@ -189,19 +193,25 @@ class Evidence:
         self._finalized = True
 
         # Write summary
-        summary_path = os.path.join(self.evidence_dir, "summary.txt")
-        with open(summary_path, "w", encoding="utf-8") as f:
-            f.write(f"Test: {self.test_name}\n")
-            f.write(f"Timestamp: {self.timestamp}\n")
-            f.write(f"Total Steps: {self.step_count}\n")
-            f.write(f"Screenshots: {len(self.screenshots)}\n")
-            f.write(f"\n--- Log ---\n")
-            for entry in self.log_entries:
-                f.write(f"{entry}\n")
+        try:
+            summary_path = os.path.join(self.evidence_dir, "summary.txt")
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write(f"Test: {self.test_name}\n")
+                f.write(f"Timestamp: {self.timestamp}\n")
+                f.write(f"Total Steps: {self.step_count}\n")
+                f.write(f"Screenshots: {len(self.screenshots)}\n")
+                f.write(f"\n--- Log ---\n")
+                for entry in self.log_entries:
+                    f.write(f"{entry}\n")
+        except Exception as e:
+            logger.warning(f"Failed to write evidence summary: {e}")
 
-        # Cleanup file handler
-        self._framework_logger.removeHandler(self._file_handler)
-        self._file_handler.close()
+        # Cleanup file handler (always attempt, even if summary write failed)
+        try:
+            self._framework_logger.removeHandler(self._file_handler)
+            self._file_handler.close()
+        except Exception as e:
+            logger.warning(f"Failed to cleanup file handler: {e}")
 
         logger.info(
             f"Evidence finalized: {self.step_count} steps, "

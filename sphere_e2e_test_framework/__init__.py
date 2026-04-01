@@ -30,6 +30,10 @@ _LAZY_IMPORTS = {
     "RemoteAgentPool": "sphere_e2e_test_framework.driver.remote_trigger",
     "LokiLogCollector": "sphere_e2e_test_framework.driver.loki_collector",
     "DriverProtocol": "sphere_e2e_test_framework.driver.base",
+    "UIAppManager": "sphere_e2e_test_framework.driver.appmanager",
+    "CLIDriver": "sphere_e2e_test_framework.driver.cli_driver",
+    "ConfigValidator": "sphere_e2e_test_framework.driver.config_validator",
+    "ConfigValidationError": "sphere_e2e_test_framework.driver.config_validator",
     "BasePage": "sphere_e2e_test_framework.pages.base_page",
 }
 

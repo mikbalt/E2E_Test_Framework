@@ -15,6 +15,7 @@ import logging
 import os
 import platform
 import subprocess
+import threading
 import time
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,7 @@ class ConsoleRunner:
             self.env.update(env_vars)
 
     def run(self, command, args=None, timeout=60, working_dir=None, env_vars=None,
-            input_text=None):
+            input_text=None, stream_output=False):
         """
         Execute a console command and capture output.
 
@@ -141,6 +142,8 @@ class ConsoleRunner:
             working_dir: Override working directory.
             env_vars: Override environment variables.
             input_text: Text to pipe to stdin.
+            stream_output: If True, stream stdout/stderr line-by-line to logger
+                           while still capturing full output.
 
         Returns:
             CommandResult with stdout, stderr, returncode, duration.
@@ -163,24 +166,35 @@ class ConsoleRunner:
         timed_out = False
 
         try:
-            proc = subprocess.run(
-                cmd_list,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=cwd,
-                env=env,
-                input=input_text,
-            )
-            duration = time.time() - start_time
+            if stream_output:
+                result = self._run_with_streaming(
+                    cmd_list=cmd_list,
+                    cmd_str=cmd_str,
+                    timeout=timeout,
+                    cwd=cwd,
+                    env=env,
+                    input_text=input_text,
+                    start_time=start_time,
+                )
+            else:
+                proc = subprocess.run(
+                    cmd_list,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=cwd,
+                    env=env,
+                    input=input_text,
+                )
+                duration = time.time() - start_time
 
-            result = CommandResult(
-                command=cmd_str,
-                returncode=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                duration=duration,
-            )
+                result = CommandResult(
+                    command=cmd_str,
+                    returncode=proc.returncode,
+                    stdout=proc.stdout,
+                    stderr=proc.stderr,
+                    duration=duration,
+                )
 
         except subprocess.TimeoutExpired:
             duration = time.time() - start_time
@@ -212,6 +226,68 @@ class ConsoleRunner:
                 logger.warning(f"  stderr: {line}")
 
         return result
+
+    def _run_with_streaming(self, cmd_list, cmd_str, timeout, cwd, env, input_text, start_time):
+        """Run subprocess with live stdout/stderr streaming and captured output."""
+        stdout_lines = []
+        stderr_lines = []
+
+        def _drain(pipe, sink, log_fn):
+            try:
+                for line in iter(pipe.readline, ""):
+                    sink.append(line)
+                    log_fn(line.rstrip("\r\n"))
+            finally:
+                pipe.close()
+
+        proc = subprocess.Popen(
+            cmd_list,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        if input_text is not None and proc.stdin is not None:
+            proc.stdin.write(input_text)
+            proc.stdin.close()
+
+        stdout_thread = threading.Thread(
+            target=_drain, args=(proc.stdout, stdout_lines, logger.info), daemon=True
+        )
+        stderr_thread = threading.Thread(
+            target=_drain, args=(proc.stderr, stderr_lines, logger.warning), daemon=True
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+
+        timed_out = False
+        try:
+            returncode = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            proc.kill()
+            returncode = -1
+
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
+
+        duration = time.time() - start_time
+        if timed_out:
+            stderr_lines.append(f"Command timed out after {timeout}s")
+
+        return CommandResult(
+            command=cmd_str,
+            returncode=returncode,
+            stdout="".join(stdout_lines),
+            stderr="".join(stderr_lines),
+            duration=duration,
+            timed_out=timed_out,
+        )
 
     def run_script(self, script_path, args=None, **kwargs):
         """Run a script file (batch, shell, etc.)."""

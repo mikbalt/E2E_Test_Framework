@@ -18,6 +18,7 @@ from sphere_e2e_test_framework.pages.e_admin.user_creation_page import UserCreat
 from sphere_e2e_test_framework.pages.e_admin.kc_login_page import KCLoginPage
 from sphere_e2e_test_framework.pages.e_admin.ccmk_import_page import CCMKImportPage
 from sphere_e2e_test_framework.pages.e_admin.key_ceremony_page import KeyCeremonyFlow
+from sphere_e2e_test_framework.pages.e_admin.ckc_page import CustomerKeyCeremonyPage
 from sphere_e2e_test_framework.pages.e_admin.profile_management_page import ProfileManagementPage
 from sphere_e2e_test_framework.pages.e_admin.user_management_page import UserManagementPage
 
@@ -31,6 +32,7 @@ __all__ = [
     "KCLoginPage",
     "CCMKImportPage",
     "KeyCeremonyFlow",
+    "CustomerKeyCeremonyPage",
     "ProfileManagementPage",
     "UserManagementPage",
 ]

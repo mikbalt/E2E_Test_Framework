@@ -1142,7 +1142,7 @@ class UIDriver:
         return img
 
     def close(self):
-        """Close the application gracefully."""
+        """Close the application gracefully, verifying process termination."""
         if self.app:
             logger.info("Closing application...")
             try:
@@ -1156,6 +1156,20 @@ class UIDriver:
                     self.app.kill()
                 except Exception:
                     pass
+
+            # Verify process is actually dead
+            for _ in range(5):
+                try:
+                    if not self.app.is_process_running():
+                        return
+                except Exception:
+                    return  # Process object invalid = process dead
+                time.sleep(1)
+
+            logger.error(
+                f"Process still running after close+kill (pid={getattr(self.app, 'process', '?')}). "
+                "Orphaned process may accumulate in CI."
+            )
 
     def __enter__(self):
         self.start()

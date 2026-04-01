@@ -49,7 +49,7 @@ class TestDeleteOperationUserFlow:
     @allure.title("[E2E][e-admin] Delete Operation User (Flow)")
     @allure.severity(allure.severity_level.CRITICAL)
     @pytest.mark.critical
-    @pytest.mark.order(3)
+    @pytest.mark.order(5)
     @pytest.mark.depends_on(37509)
     def test_delete_operation_user(self):
         """Full flow: login admin -> create user -> delete user -> verify login fails."""

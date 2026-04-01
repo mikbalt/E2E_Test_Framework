@@ -117,7 +117,7 @@ class LoginPage(EAdminBasePage):
         self.driver.refresh_window()
         return DashboardPage(self.driver, self.evidence)
 
-    def login_expect_failure(self, username, password, timeout=15,
+    def login_expect_failure(self, username, password, timeout=TIMEOUT,
                              step_name=None):
         """Attempt login expecting failure. Returns error message.
 

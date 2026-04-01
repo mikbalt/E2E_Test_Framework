@@ -23,14 +23,18 @@ Usage:
 
     # Collect multiple tool-specific logs from settings.yaml
     collector.collect_from_config(config["console_tools"]["pkcs11_java"])
+
+    # Collect latest log execution
+    collector.collect_latest("C:/logs/", pattern="*.log", name="pkcs11_keygen")
 """
 
-import datetime
+import time
 import glob
 import logging
 import os
 import shutil
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +148,60 @@ class LogCollector:
             self.evidence.log(f"Collected log: {log_path} ({file_size:.2f}MB)")
 
         return dest
+
+    def collect_latest(self, log_dir, pattern=None, name=None, max_size_mb=10, wait_timeout=10):
+        """
+        Collect the latest file from a directory (supports files without extension).
+
+        Args:
+            log_dir (str): Directory containing logs
+            pattern (str, optional): Pattern filter (e.g. '*.log'). If None → all files
+            name (str, optional): Display name in Allure
+            max_size_mb (int): Max size before tail collection
+            wait_timeout (int): Seconds to wait for files to appear
+
+        Returns:
+            str or None
+        """
+
+        log_path = Path(log_dir)
+        if not log_path.exists():
+            logger.warning(f"Directory not found: {log_dir}")
+            self._attach_text(f"[Directory not found: {log_dir}]", name or "missing_dir")
+            return None
+
+        # 🔥 Wait for file to appear (important for CLI-generated reports)
+        files = []
+        start_time = time.time()
+
+        while time.time() - start_time < wait_timeout:
+            if pattern:
+                files = list(log_path.rglob(pattern))
+            else:
+                # ✅ Get ALL files (including no extension)
+                files = [f for f in log_path.rglob("*") if f.is_file()]
+
+            if files:
+                break
+
+            time.sleep(1)
+
+        if not files:
+            logger.warning(f"No files found in {log_dir} after {wait_timeout}s")
+            self._attach_text(f"[No files found in {log_dir}]", name or "missing_file")
+            return None
+
+        # 🔥 Filter only fully written files (avoid 0-byte or temp files)
+        files = [f for f in files if f.stat().st_size > 0]
+        if not files:
+            logger.warning("Files found but all are empty (possibly still writing)")
+            return None
+
+        # 🔥 Get latest modified file
+        latest_file = max(files, key=lambda f: f.stat().st_mtime)
+        logger.info(f"Latest file detected: {latest_file}")
+
+        return self.collect(str(latest_file), name=name, max_size_mb=max_size_mb)
 
     def collect_text(self, text_content, name="output"):
         """

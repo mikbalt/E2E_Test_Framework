@@ -33,6 +33,19 @@ class DashboardPage(EAdminBasePage):
         self.driver.refresh_window()
         return TermsPage(self.driver, self.evidence)
 
+    def start_customer_key_ceremony(self, step_name=None):
+        """Click 'Customer Key Ceremony' button.
+
+        Returns a CustomerKeyCeremonyPage.
+        """
+        from sphere_e2e_test_framework.pages.e_admin.ckc_page import CustomerKeyCeremonyPage
+
+        with self._step(step_name):
+            self.driver.click_button(auto_id="btnCustomerKeyCeremony")
+            logger.info("Customer Key Ceremony started")
+
+        return CustomerKeyCeremonyPage(self.driver, self.evidence)
+
     def get_logged_in_user(self):
         """Read the username from lbl_clickLogin label.
 

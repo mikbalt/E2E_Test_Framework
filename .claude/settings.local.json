@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(xargs grep:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find C:\\\\Users\\\\Admin\\\\Documents\\\\HSM_Test\\\\REPOSITORY E2E\\\\e2e_test_framework\\\\tests\\\\ui\\\\e_admin:*)",
+      "Bash(ls:*)",
+      "Bash(pip:*)",
+      "Bash(pytest:*)"
     ]
   }
 }

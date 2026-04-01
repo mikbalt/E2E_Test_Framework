@@ -12,6 +12,9 @@ from sphere_e2e_test_framework.driver.kiwi_tcms import KiwiReporter
 from sphere_e2e_test_framework.driver.grafana_push import MetricsPusher
 from sphere_e2e_test_framework.driver.health_check import HealthChecker, HealthCheckResult, HealthCheckReport
 from sphere_e2e_test_framework.driver.smoke_gate import SmokeGate
+from sphere_e2e_test_framework.driver.appmanager import UIAppManager
+from sphere_e2e_test_framework.driver.cli_driver import CLIDriver
+from sphere_e2e_test_framework.driver.config_validator import ConfigValidator, ConfigValidationError
 
 __all__ = [
     "Evidence",
@@ -28,4 +31,8 @@ __all__ = [
     "HealthCheckResult",
     "HealthCheckReport",
     "SmokeGate",
+    "UIAppManager",
+    "CLIDriver",
+    "ConfigValidator",
+    "ConfigValidationError",
 ]

@@ -58,6 +58,23 @@ class BasePage:
             yield
 
     # ------------------------------------------------------------------
+    # Mid-step screenshot helper
+    # ------------------------------------------------------------------
+    def _snap(self, label):
+        """Capture a mid-step screenshot before a transient UI event disappears.
+
+        Use before clicking dismiss/confirm buttons so popups, dialogs,
+        and notifications are captured in evidence.
+
+        Args:
+            label: Short descriptive suffix (e.g. ``"confirm_dialog"``).
+                   Saved as ``step_NNN_{label}.png``.
+        """
+        if self.evidence:
+            name = f"step_{self.evidence.step_count:03d}_{label}"
+            self.evidence.screenshot(self.driver, name)
+
+    # ------------------------------------------------------------------
     # Common dialog helpers
     # ------------------------------------------------------------------
     def dismiss_ok(self, step_name=None):
@@ -66,6 +83,7 @@ class BasePage:
             self.driver.wait_for_element(
                 timeout=TIMEOUT, auto_id="2", control_type="Button",
             )
+            self._snap("popup_before_ok")
             self.driver.click_button(auto_id="2")
 
     def dismiss_ok_with_message(self, step_name=None):
@@ -111,6 +129,7 @@ class BasePage:
                         pass
 
             logger.info(f"Popup message: '{message}'")
+            self._snap("popup_message")
             self.driver.click_button(auto_id="2")
         return message
 

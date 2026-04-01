@@ -96,14 +96,26 @@ apps:
     startup_wait: 2
     backend: "uia"
 
+  testhsm:
+    path: "${TESTHSM_PATH}"             # Required — set in .env
+    class_name: "WindowsForms10\\.Window.*"  # WinForms app (empty title)
+    startup_wait: 5                # Seconds to wait after launch
+    backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
+    app_logs_dir: "${TESTHSM_APP_LOGS}" # App logs dir — collected + zipped after each test
+    window_monitor:
+      enabled: true                  # Background monitor for unexpected windows
+      interval: 1.0                  # Polling interval in seconds
+      auto_dismiss: false            # Auto-close unexpected windows (future)
+
+
 # --- Console Tools (cross-platform) ---
 # Paths can be overridden per platform.
 # Or set env: PKCS11_TOOL_PATH=/usr/bin/pkcs11-tool
 console_tools:
   pkcs11_native:
-    command_windows: "pkcs11-tool.exe"
+    command_windows: "PKCS11.exe"
     command_linux: "pkcs11-tool"
-    working_dir_windows: "C:\\Tools\\pkcs11"
+    working_dir_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release"
     working_dir_linux: "/opt/tools/pkcs11"
     timeout: 30
 
@@ -127,6 +139,18 @@ console_tools:
     working_dir_windows: "C:\\Tools\\pkcs11-cpp"
     working_dir_linux: "/opt/tools/pkcs11-cpp"
     timeout: 30
+
+  testhsm_cli:
+    executable_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/TestHsm.Cli.exe"
+    config_HL_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/config_HL_test.yml"
+    config_DP_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/config_DP_test.yml"
+
+  pkcs11_cpp_gtest_fips:
+    command_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release\\PKCS11.exe"
+    working_dir_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release"
+    dll: "libIdemiaPKCS11.dll"
+    gtest_filter: "hsmDeprovisioning.testGoodCase_01"
+    timeout: 120
 
 # --- Evidence Settings ---
 evidence:
@@ -170,7 +194,7 @@ kiwi_tcms:
 
 # --- Grafana / Prometheus ---
 metrics:
-  enabled: true                  # Set true after Prometheus Pushgateway is ready
+  enabled: false                  # Set true after Prometheus Pushgateway is ready
   pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
   job_name: "E2E_Sphere_HSM"
   metric_prefix: "hsm"            # Prometheus metric name prefix (keeps hsm_* names)

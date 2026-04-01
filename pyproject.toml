@@ -43,8 +43,10 @@ include = ["sphere_e2e_test_framework*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
+    "apps: Application that used in testing purpose",
     "ui: Windows UI automation tests",
     "console: Console/CLI based tests",
+    "cps: CPS related tests",
     "pkcs11: PKCS#11 related tests",
     "smoke: Quick smoke tests",
     "regression: Full regression tests",

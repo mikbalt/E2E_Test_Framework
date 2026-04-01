@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(where:*)",
-      "Bash(allure:*)",
-      "Bash(npx allure:*)"
-    ]
-  }
-}
