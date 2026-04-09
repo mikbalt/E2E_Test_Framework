@@ -18,6 +18,7 @@ from sphere_e2e_test_framework.steps.e_admin.customer_key_ceremony import (
     ckc_generate_key,
     ckc_login_admin,
     ckc_proceed_next,
+    ckc_save_export_results,
     ckc_select_generate_and_export,
     ckc_verify_key_summary,
     start_ckc,
@@ -50,6 +51,7 @@ customer_key_ceremony_flow = Flow("Customer Key Ceremony", [
     ckc_export_all_custodian_keys(),
     ckc_verify_key_summary(),
     ckc_finish(),
+    ckc_save_export_results(),
 ])
 
 # ------------------------------------------------------------------

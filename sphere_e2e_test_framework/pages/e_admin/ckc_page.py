@@ -71,27 +71,51 @@ class CustomerKeyCeremonyPage(EAdminBasePage):
             logger.info("GENERATE_AND_EXPORT mode selected")
         return self
 
-    def configure_key(self, key_label, key_algo, key_length, key_usage,
-                      cps_key_type, step_name=None):
+    def configure_key(self, key_label, key_algo, key_length, key_usages,
+                      cps_key_type, key_type=None, kcv_algo=None,
+                      valid_date=None, step_name=None):
         """Configure key parameters for generation.
 
         Args:
             key_label: Key label text (e.g. 'CKC_E2E_1').
             key_algo: Key algorithm (e.g. 'AES').
             key_length: Key length (e.g. '256 bits').
-            key_usage: Key usage hex (e.g. '3F').
-            cps_key_type: CPS key type (e.g. 'ZCMK_EXP').
+            key_usages: List of key usage checkbox auto_ids to select,
+                e.g. ['cb_TRANSPORT_KEY', 'cbUSAGE_SIGN', ...].
+            cps_key_type: CPS key type / KCV Method (e.g. 'ZCMK_EXP').
+            key_type: Key type (e.g. 'Permanent (stored in LKD)'). None = skip.
+            kcv_algo: KCV algorithm (e.g. 'Standard_Algorithm'). None = skip.
+            valid_date: Valid date string for dateTimePicker. None = skip.
             step_name: Optional evidence step description.
         """
         with self._step(step_name):
+            self.driver.wait_for_element(
+                timeout=TIMEOUT, auto_id="txtKeyLabel",
+            )
             self.driver.type_text(key_label, auto_id="txtKeyLabel")
-            self.driver.select_combobox(auto_id="cbKeyAlgo", value=key_algo)
-            self.driver.select_combobox(auto_id="cbKeyLength", value=key_length)
-            self.driver.type_text(key_usage, auto_id="txtKeyUsage")
+            self.driver.click_combobox_item(auto_id="cbKeyAlgo", value=key_algo)
+            self.driver.refresh_window()
+            self.driver.click_combobox_item(auto_id="cbKeyLength", value=key_length)
+            if key_type is not None:
+                self.driver.select_combobox(auto_id="cbKeyType", value=key_type)
+
+            # Key usage: click txtKeyUsage to open popup, check all at once, confirm
+            self.driver.click_element(auto_id="txtKeyUsage")
+            win = self.driver._active_window()
+            for cb_id in key_usages:
+                cb = win.child_window(auto_id=cb_id, control_type="CheckBox")
+                cb.click_input()
+            logger.info(f"Key usage checkboxes checked: {key_usages}")
+            self.driver.click_button(auto_id="btnConfirm")
+
+            if kcv_algo is not None:
+                self.driver.select_combobox(auto_id="cbD0", value=kcv_algo)
             self.driver.select_combobox(auto_id="cbCpsKeyType", value=cps_key_type)
+            if valid_date is not None:
+                self.driver.select_combobox(auto_id="dateTimePicker", value=valid_date)
             logger.info(
                 f"Key configured: label={key_label}, algo={key_algo}, "
-                f"length={key_length}, usage={key_usage}, cps_type={cps_key_type}"
+                f"length={key_length}, usages={key_usages}, cps_type={cps_key_type}"
             )
         return self
 
@@ -141,15 +165,15 @@ class CustomerKeyCeremonyPage(EAdminBasePage):
             self.driver.wait_for_element(
                 timeout=TIMEOUT, auto_id="txtExpSecret",
             )
-            values["secret"] = self.driver.get_text(auto_id="txtExpSecret")
-            values["secret_kcv"] = self.driver.get_text(auto_id="txtExpSecretKcv")
+            values["secret"] = self.driver.get_field_value(auto_id="txtExpSecret")
+            values["secret_kcv"] = self.driver.get_field_value(auto_id="txtExpSecretKcv")
             logger.info(
                 f"Export values read: secret={values['secret']}, "
                 f"secret_kcv={values['secret_kcv']}"
             )
 
             if is_last:
-                values["key_kcv"] = self.driver.get_text(auto_id="txtExpKeyKcv")
+                values["key_kcv"] = self.driver.get_field_value(auto_id="txtExpKeyKcv")
                 logger.info(f"Key KCV: {values['key_kcv']}")
 
         return values

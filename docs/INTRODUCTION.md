@@ -24,10 +24,10 @@ console/CLI tools (PKCS#11 in Go, Java, C++).
 
 | Application | Type | Status | Test Location |
 |-------------|------|--------|---------------|
-| **E-Admin** | WinForms desktop app | Active (7 test classes) | `tests/ui/e_admin/` |
-| **CPS** | WinForms desktop app | Scaffolded (ready to write) | `tests/ui/cps/` |
+| **E-Admin** | WinForms desktop app | Active (9 test classes) | `tests/ui/e_admin/` |
+| **CPS** | WinForms desktop app | Active (4 test classes) | `tests/ui/cps/` |
 | **Proxy** | WinForms desktop app | Scaffolded (ready to write) | `tests/ui/proxy/` |
-| **PKCS#11 Tools** | CLI (Go, Java, C++, GTest) | Active (1 test class) | `tests/console/pkcs11/` |
+| **PKCS#11 Tools** | CLI (Go, Java, C++, GTest) | Active (6 test classes) | `tests/console/pkcs11/` |
 
 ### Test Scenarios (E-Admin)
 
@@ -38,6 +38,10 @@ console/CLI tools (PKCS#11 in Go, Java, C++).
 | Operational User Creation | TC-37516 | Create operational users with roles |
 | HSM Reset by Super User | TC-37517 | HSM reset via super user privileges |
 | Delete Operational User | TC-37520 | User deletion and verification |
+| Block User | TC-37522 | Block an operational user |
+| Unblock User | TC-37523 | Unblock a previously blocked user |
+| Customer Key Ceremony (Generate & Export) | TC-37524 | CKC: create KCPs, generate key, export per KCP |
+| Customer Key Ceremony (Import) | TC-XXXXX | CKC: reuse KCPs, import key components per KCP |
 
 ---
 
@@ -48,10 +52,17 @@ graph TB
     subgraph Framework["Sphere E2E Test Framework"]
         direction TB
 
+        subgraph FlowStep["Flow / Step Orchestration"]
+            FL["Flow<br/><i>composable sequences</i>"]
+            ST["Step Factories<br/><i>reusable, data-driven</i>"]
+            FC["FlowContext<br/><i>driver + evidence + state</i>"]
+            FL --> ST --> FC
+        end
+
         subgraph POM["Page Object Model"]
             BP["BasePage<br/><i>generic WinForms</i>"]
             EAB["EAdminBasePage<br/><i>sidebar, T&C, logout</i>"]
-            EA["e_admin/<br/>10 page classes"]
+            EA["e_admin/<br/>12 page classes"]
             CP["cps/<br/><i>scaffold</i>"]
             PX["proxy/<br/><i>scaffold</i>"]
             BP --> EAB --> EA
@@ -196,7 +207,82 @@ flowchart LR
     style Output fill:#00b894,stroke:#55efc4,color:#ffffff
 ```
 
-### 4. Page Object Model (POM)
+### 4. Flow/Step Orchestration
+
+Complex multi-step workflows (key ceremony, customer key ceremony) are composed
+from reusable **Step** factories and executed via **Flow** objects:
+
+```python
+# Step factory — returns a reusable Step
+def ckc_login_admin(username_attr="admin_username", password_attr="admin_password"):
+    def _action(ctx):
+        ckc = ctx.get("_ckc_page") or CustomerKeyCeremonyPage(ctx.driver, ctx.evidence)
+        ckc.login_admin(getattr(ctx.td, username_attr), getattr(ctx.td, password_attr),
+                        step_name="And: Admin logs in for CKC")
+    return Step("Admin login for CKC", _action)
+
+# Flow — compose steps into a runnable sequence
+customer_key_ceremony_flow = Flow("Customer Key Ceremony", [
+    connect(),
+    start_ckc(),
+    ckc_accept_terms(),
+    ckc_login_admin(),
+    ckc_create_custodian_parties(),
+    ckc_proceed_next(),
+    ckc_select_generate_and_export(),
+    ckc_configure_key(),
+    ckc_generate_key(),
+    ckc_export_all_custodian_keys(),
+    ckc_verify_key_summary(),
+    ckc_finish(),
+    ckc_save_export_results(),
+])
+
+# Test — run flow with context
+def test_customer_key_ceremony(self):
+    ctx = FlowContext(self.driver, self.evidence, self.td)
+    customer_key_ceremony_flow.run(ctx)
+```
+
+```mermaid
+flowchart LR
+    subgraph FlowLayer["Flow Layer"]
+        F["Flow<br/><i>sequence of steps</i>"]
+    end
+
+    subgraph StepLayer["Step Layer"]
+        S1["Step 1<br/><i>connect()</i>"]
+        S2["Step 2<br/><i>login()</i>"]
+        S3["Step N<br/><i>finish()</i>"]
+    end
+
+    subgraph PageLayer["Page Object Layer"]
+        PO["Page Objects<br/><i>UI interactions</i>"]
+    end
+
+    subgraph DriverLayer["Driver Layer"]
+        DR["UIDriver<br/><i>pywinauto</i>"]
+    end
+
+    F --> S1 & S2 & S3
+    S1 & S2 & S3 --> PO
+    PO --> DR
+
+    style FlowLayer fill:#00b894,stroke:#55efc4,color:#ffffff
+    style StepLayer fill:#0984e3,stroke:#74b9ff,color:#ffffff
+    style PageLayer fill:#0f3460,stroke:#533483,color:#e0e0e0
+    style DriverLayer fill:#2d3436,stroke:#636e72,color:#dfe6e9
+```
+
+Key features:
+- **`Step(retries=N, retry_delay=T)`** — exponential backoff retry on failure
+- **`Step(on_failure=callback)`** — cleanup callback on final failure
+- **`Flow(cleanup_steps=[...])`** — always-run steps in finally block
+- **`Flow(continue_on_failure=True)`** — tolerate step failures, record in FlowResult
+- **`FlowContext`** — carries driver, evidence, test data, and shared state across steps
+- **Data-driven** — step factories read from `ctx.td` (test data dataclass)
+
+### 5. Page Object Model (POM)
 
 Each application screen is a Python class that encapsulates UI interactions:
 
@@ -240,19 +326,34 @@ classDiagram
         +import_ccmk() CCMKImportPage
     }
 
+    class CustomerKeyCeremonyPage {
+        +start_ckc()
+        +login_admin(username, password)
+        +create_custodian_party(username, password, add_button_id)
+        +select_generate_and_export()
+        +configure_key(key_label, key_algo, key_length, ...)
+        +generate_key()
+        +read_export_values(is_last)
+        +get_key_summary()
+    }
+
     class UserManagementPage {
         +create_user(data) UserCreationPage
         +delete_user(username)
+        +block_user(username)
+        +unblock_user(username)
     }
 
     BasePage <|-- EAdminBasePage
     EAdminBasePage <|-- LoginPage
     EAdminBasePage <|-- DashboardPage
     EAdminBasePage <|-- KeyCeremonyFlow
+    EAdminBasePage <|-- CustomerKeyCeremonyPage
     EAdminBasePage <|-- UserManagementPage
 
     LoginPage --> DashboardPage : returns
     DashboardPage --> KeyCeremonyFlow : navigates
+    DashboardPage --> CustomerKeyCeremonyPage : navigates
     DashboardPage --> UserManagementPage : navigates
 ```
 
@@ -263,7 +364,7 @@ Key patterns:
 - **`BasePage`** — generic WinForms helpers (dismiss dialogs, `_step()`)
 - **`EAdminBasePage`** — E-Admin-specific navigation (sidebar, T&C acceptance, logout)
 
-### 5. Health Checks
+### 6. Health Checks
 
 Pre-execution verification ensures the test environment is ready before running:
 
@@ -272,7 +373,7 @@ Pre-execution verification ensures the test environment is ready before running:
 - **Configurable** in `settings.yaml` → `health_check:`
 - **Skip with** `pytest --skip-health-check`
 
-### 6. Smoke Gate
+### 7. Smoke Gate
 
 Fail-fast mechanism: if any `@pytest.mark.smoke` test fails, abort remaining tests.
 
@@ -382,18 +483,36 @@ Additional config mechanisms:
 
 ```
 tests/
+├── test_data.py                           ← Test data dataclasses (KeyCeremonyData, etc.)
 ├── ui/
+│   ├── conftest.py                        ← COM init, dependency hooks, failure screenshots
 │   ├── e_admin/
-│   │   ├── conftest.py                    ← App-specific fixtures
-│   │   ├── test_TC-37509_KeyCeremony...   ← Test classes (1 per TCMS case)
-│   │   └── ...
+│   │   ├── conftest.py                    ← App-specific fixtures (e_admin_driver, etc.)
+│   │   ├── test_TC-37509_KeyCeremonyFIPS.py
+│   │   ├── test_TC-37515_KeyCeremonyNonFIPS.py
+│   │   ├── test_TC-37516_AddOperationUser.py
+│   │   ├── test_TC-37517_HSMResetBySuperUser.py
+│   │   ├── test_TC-37520_DeleteOperationUser.py
+│   │   ├── test_TC-37522_BlockUser.py
+│   │   ├── test_TC-37523_UnblockUser.py
+│   │   ├── test_TC-37524_CustomerKeyCeremony.py
+│   │   └── test_TC-XXXXX_CustomerKeyCeremonyImport.py
 │   ├── cps/
-│   │   └── conftest.py                    ← Scaffolded, ready to write tests
+│   │   ├── conftest.py                    ← CPS fixtures (factory-based)
+│   │   ├── test_DP_with_CLI.py
+│   │   ├── test_HL_BasicFct.py
+│   │   ├── test_HL_BasicFct_with_CLI.py
+│   │   └── test_HSM_Init_for_CPS.py
 │   └── proxy/
 │       └── conftest.py                    ← Scaffolded, ready to write tests
 └── console/
     └── pkcs11/
-        └── test_pkcs11_sample.py          ← CLI tool wrapper tests
+        ├── test_pkcs11_sample.py
+        ├── test_hsm_deprovisioning.py
+        ├── test_hsm_operational_user_login.py
+        ├── test_hsm_provisioning_in_fips_mode.py
+        ├── test_hsm_provisioning_in_fips_mode_2_user.py
+        └── test_hsm_provisioning_in_nonfips_mode.py
 ```
 
 ### Fixture Loading (Layered Conftest)
@@ -403,8 +522,8 @@ flowchart TB
     P["plugin/<br/><i>Auto-registered via pytest11</i><br/>config, evidence, console,<br/>log_collector, ui_app"]
     R["conftest.py<br/><i>Root</i>"]
     T["tests/ui/conftest.py<br/><i>COM init, dependency hooks,<br/>failure screenshots</i>"]
-    U["tests/ui/e_admin/conftest.py<br/><i>e_admin_driver, window_monitor,<br/>collect_app_logs</i>"]
-    C["tests/ui/cps/conftest.py<br/><i>cps_driver, window_monitor,<br/>collect_app_logs</i>"]
+    U["tests/ui/e_admin/conftest.py<br/><i>e_admin_driver, window_monitor,<br/>collect_app_logs (9 tests)</i>"]
+    C["tests/ui/cps/conftest.py<br/><i>cps_driver, window_monitor,<br/>collect_app_logs (4 tests)</i>"]
 
     P --> R --> T
     T --> U
@@ -419,23 +538,45 @@ Each conftest only loads when tests in that directory are selected — no unnece
 
 ### Test File Convention
 
-Each test file follows this pattern:
+Tests use one of two patterns — **Flow-based** (preferred for complex workflows) or **Page Object** (for simpler tests):
+
+**Flow-based pattern** (Key Ceremony, CKC, HSM Reset):
 
 ```python
-@allure.epic("Sphere HSM")
-@allure.feature("E-Admin - Key Ceremony")
-@pytest.mark.ui
+@allure.epic("Sphere HSM Idemia - E2E Tests - E-Admin")
+@allure.feature("Customer Key Ceremony")
 @pytest.mark.e_admin
-@pytest.mark.tcms(case_id=37509)
-class TestKeyCeremonyFIPS:
+@pytest.mark.flow
+class TestCustomerKeyCeremonyFlow:
 
     @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence, e_admin_config):
+    def setup(self, e_admin_driver, evidence):
+        self.driver = e_admin_driver
+        self.evidence = evidence
+        self.td = CustomerKeyCeremonyData.from_env()
+        yield
+
+    def test_customer_key_ceremony(self):
+        ctx = FlowContext(self.driver, self.evidence, self.td)
+        customer_key_ceremony_flow.run(ctx)
+```
+
+**Page Object pattern** (User management, simpler workflows):
+
+```python
+@allure.epic("Sphere HSM Idemia - E2E Tests - E-Admin")
+@allure.feature("User Management")
+@pytest.mark.e_admin
+@pytest.mark.tcms(case_id=37516)
+class TestAddOperationUser:
+
+    @pytest.fixture(autouse=True)
+    def setup(self, e_admin_driver, evidence):
         self.driver = e_admin_driver
         self.evidence = evidence
         yield
 
-    def test_key_ceremony_fips(self):
+    def test_add_operation_user(self):
         login = LoginPage(self.driver, self.evidence)
         dashboard = login.connect_to_hsm(step_name="Connect to HSM")
         # ... test steps with evidence tracking
@@ -621,12 +762,14 @@ flowchart LR
 | **Page Object Model** | Separates UI locators from test logic; one screen = one class |
 | **`_step()` + evidence tracking** | Every action produces Allure steps with screenshots — no manual effort |
 | **TCMS as source of truth** | Test procedures live in Kiwi TCMS (human-readable), automation code lives in Python (machine-executable) |
+| **Flow/Step orchestration** | Complex ceremonies (20+ steps) are composed from reusable step factories. Steps share state via FlowContext, support retry/cleanup, and remain independently testable |
 | **No BDD/Gherkin** | Complex HSM workflows (20-30 steps) don't fit 1:1 step definitions. `tracked_step` provides the same documentation value without the overhead |
 | **Health checks before execution** | Fail fast with clear diagnostics if HSM is unreachable, instead of cryptic timeouts during tests |
 | **Separated conftest per app** | `tests/ui/e_admin/conftest.py` only loads when running E-Admin tests — no unnecessary imports |
 | **Environment-based config** | `.env` for secrets, `settings.yaml` for structure — safe for version control |
 | **DriverProtocol (duck typing)** | Enables injection of non-pywinauto drivers (Playwright, mock) without modifying core |
 | **EAdminBasePage split** | New apps inherit clean `BasePage` without E-Admin navigation methods |
+| **Export artifacts to JSON** | CKC Generate & Export saves key data to `output/ckc_export.json` for reuse by Import tests — decouples test execution order |
 
 ---
 
@@ -642,6 +785,11 @@ flowchart LR
 | **TCMS** | Test Case Management System (Kiwi TCMS) |
 | **Evidence** | Screenshots, logs, and attachments collected during test execution |
 | **tracked_step** | Context manager that creates an Allure step with auto-screenshot |
+| **Flow** | Composable sequence of Steps executed via FlowContext — supports retry, cleanup, continue-on-failure |
+| **Step** | Reusable action factory that takes a FlowContext — the building block of Flows |
+| **FlowContext** | Runtime context carrying driver, evidence, test data, and shared state across Steps |
+| **CKC** | Customer Key Ceremony — key generation/export/import workflow in E-Admin |
+| **KCP** | Key Custodian Party — user role responsible for key components during CKC |
 | **Smoke Gate** | Mechanism to abort test suite if critical smoke tests fail |
 | **Health Check** | Pre-execution verification that the test environment is ready |
 | **UIDriver** | Framework's pywinauto wrapper with popup handling and retry logic |

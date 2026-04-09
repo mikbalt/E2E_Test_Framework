@@ -205,6 +205,52 @@ def confirm_admin_and_transition():
     return Step("Confirm admin and transition", _action)
 
 
+def confirm_admin_and_transition_nonfips():
+    """Post-admin-creation (Non-FIPS): dismiss OK → wait for sync → accept T&C.
+
+    After ``create_user()`` dismisses the first OK (admin created),
+    one more OK appears. Dismiss it, then poll until the page title
+    changes (sync completes and Custodians T&C loads).
+    """
+
+    def _action(ctx):
+        from sphere_e2e_test_framework.pages.base_page import BasePage
+        from sphere_e2e_test_framework.pages.e_admin import TermsPage
+
+        base = BasePage(ctx.driver, ctx.evidence)
+        base.dismiss_ok(
+            step_name="Then: Sync started",
+        )
+
+        # Poll until sync completes — during sync lblStatus shows progress text.
+        # Once sync is done and T&C page loads, lblStatus disappears.
+        logger.info("Waiting for sync to complete...")
+        for i in range(60):
+            time.sleep(5)
+            ctx.driver.refresh_window()
+            if not ctx.driver.element_exists(auto_id="lblStatus"):
+                logger.info(f"Sync completed after ~{(i + 1) * 5}s")
+                break
+            else:
+                try:
+                    status = ctx.driver.get_text(auto_id="lblStatus")
+                    logger.info(f"Sync in progress ({(i + 1) * 5}s): '{status}'")
+                except Exception:
+                    pass
+        else:
+            raise RuntimeError(
+                "Post-admin sync did not complete after 5 minutes"
+            )
+
+        terms = TermsPage(ctx.driver, ctx.evidence)
+        terms.accept(
+            step_name="And: Accept post-admin-creation Terms & Conditions",
+        )
+        ctx.page = terms
+
+    return Step("Confirm admin and transition (Non-FIPS)", _action)
+
+
 def wait_and_accept_terms(sleep_seconds=10, label="Terms & Conditions"):
     """Sleep → refresh → wait for rbAgree → accept T&C."""
 
@@ -339,6 +385,49 @@ def import_all_ccmk_components():
                 ccmk_page.next()
 
     return Step("Import all CCMK components", _action)
+
+
+def import_all_ccmk_components_nonfips():
+    """Loop KCs (Non-FIPS): login → import → next → accept T&C between each KC.
+
+    In Non-FIPS mode, after each KC imports and clicks Next, a T&C
+    "understand" page (rbAgree + btnNext) appears before the next KC
+    login screen. This step handles those intermediate T&C pages.
+    """
+
+    def _action(ctx):
+        from sphere_e2e_test_framework.pages.e_admin import KCLoginPage, TermsPage
+
+        kc_login = ctx.get("_kc_login_page") or KCLoginPage(ctx.driver, ctx.evidence)
+
+        for i, kc in enumerate(ctx.td.key_custodians, start=1):
+            is_last = (i == len(ctx.td.key_custodians))
+
+            ccmk_page = kc_login.login(
+                kc.username, kc.password,
+                step_name=f"And: Key Custodian {i} ({kc.username}) logs in",
+            )
+            ccmk_page.import_component(
+                kc.ccmk_secret,
+                kc.ccmk_kcv,
+                kc.ccmk_combined_kcv if is_last else None,
+                step_name=f"And: Key Custodian {i} ({kc.username}) imports CCMK component",
+            )
+            if not is_last:
+                ccmk_page.next()
+                # Non-FIPS: T&C "understand" page appears between KC imports
+                time.sleep(2)
+                ctx.driver.refresh_window()
+                ctx.driver.wait_for_element(
+                    timeout=30, auto_id="rbAgree", found_index=0,
+                )
+                terms = TermsPage(ctx.driver, ctx.evidence)
+                terms.accept(
+                    step_name=f"And: Accept T&C between KC{i} and KC{i + 1}",
+                )
+                logger.info(f"Intermediate T&C accepted after KC{i}")
+
+    return Step("Import all CCMK components (Non-FIPS)", _action)
 
 
 def finalize_ceremony():

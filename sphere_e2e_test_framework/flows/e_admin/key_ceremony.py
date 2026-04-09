@@ -8,34 +8,50 @@ from sphere_e2e_test_framework.steps.e_admin import (
     accept_post_login_terms,
     accept_terms,
     authenticate_super_user,
-    auto_setup_pre_auth,
     change_super_user_password,
     confirm_admin_and_transition,
+    confirm_admin_and_transition_nonfips,
     connect,
     create_ceremony_user,
     create_key_custodians,
     finalize_ceremony,
     import_all_ccmk_components,
+    import_all_ccmk_components_nonfips,
     kc_admin_login,
     start_hsm_init,
     wait_and_accept_terms,
 )
 
-# Shared tail for both FIPS and non-FIPS ceremonies
-_shared_ceremony_tail = [
+# Shared steps: auth + admin creation (same for both FIPS and Non-FIPS)
+_auth_and_admin = [
     authenticate_super_user(),
     create_ceremony_user(
         username_attr="admin_username",
         password_attr="admin_password",
         label="Admin",
     ),
-    confirm_admin_and_transition(),
+]
+
+# Shared steps: everything from admin transition to CCMK import
+_ceremony_common = [
     wait_and_accept_terms(sleep_seconds=10, label="Custodians Creation T&C"),
     kc_admin_login(),
     accept_post_login_terms(),
     create_key_custodians(),
     accept_ccmk_terms(),
+]
+
+# FIPS tail: direct import (no intermediate T&C between KCs)
+_ceremony_tail = [
+    *_ceremony_common,
     import_all_ccmk_components(),
+    finalize_ceremony(),
+]
+
+# Non-FIPS tail: import with T&C acceptance between each KC
+_ceremony_tail_nonfips = [
+    *_ceremony_common,
+    import_all_ccmk_components_nonfips(),
     finalize_ceremony(),
 ]
 
@@ -52,20 +68,23 @@ key_ceremony_flow = Flow("Key Ceremony", [
     accept_terms(label="Password Change T&C"),
     change_super_user_password(),
     accept_terms(label="Admin Creation T&C"),
-    *_shared_ceremony_tail,
+    *_auth_and_admin,
+    confirm_admin_and_transition(),
+    *_ceremony_tail,
 ])
 
 # ------------------------------------------------------------------
 # Key Ceremony Non-FIPS (TC-37515)
 #
-# Auto-detects whether password change is needed:
-#   Fresh HSM  → accepts all T&C + changes password
-#   Post-reset → accepts Admin Creation T&C only
+# Post-reset only: single T&C → authenticate (no password change).
+# authenticate_super_user() handles dismiss_ok internally.
 # ctx.set("fips_mode", False) for Non-FIPS finalization.
 # ------------------------------------------------------------------
 key_ceremony_nonfips_flow = Flow("Key Ceremony (Non-FIPS)", [
     connect(),
     start_hsm_init(),
-    auto_setup_pre_auth(),
-    *_shared_ceremony_tail,
+    accept_terms(label="Admin Creation T&C"),
+    *_auth_and_admin,
+    confirm_admin_and_transition_nonfips(),
+    *_ceremony_tail_nonfips,
 ])

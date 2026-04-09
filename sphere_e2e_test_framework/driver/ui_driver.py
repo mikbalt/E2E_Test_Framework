@@ -598,6 +598,26 @@ class UIDriver:
         elem = self._active_window().child_window(**criteria)
         return elem.window_text()
 
+    def get_field_value(self, auto_id=None, name=None):
+        """Get the value of an Edit/TextBox field via UIA ValuePattern.
+
+        More reliable than get_text() for read-only fields where
+        window_text() returns the label instead of the actual value.
+        """
+        criteria = {}
+        if auto_id:
+            criteria["auto_id"] = auto_id
+        if name:
+            criteria["title"] = name
+
+        elem = self._active_window().child_window(**criteria)
+        try:
+            value = elem.iface_value.CurrentValue
+        except Exception:
+            value = elem.window_text()
+        logger.info(f"Field value '{auto_id or name}': {value}")
+        return value
+
     def select_menu(self, *menu_path):
         """Navigate menu items. e.g., select_menu('File', 'Open')."""
         logger.info(f"Selecting menu: {' > '.join(menu_path)}")

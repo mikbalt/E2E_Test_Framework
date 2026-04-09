@@ -9,6 +9,9 @@ venv/
 # Evidence (generated at runtime)
 evidence/
 
+# Test output artifacts (e.g. CKC export data)
+output/
+
 # IDE
 .vscode/
 .idea/

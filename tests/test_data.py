@@ -379,7 +379,7 @@ class CustomerKeyCeremonyData:
         CKC_KCP2_USERNAME, CKC_KCP2_PASSWORD
         CKC_KCP3_USERNAME, CKC_KCP3_PASSWORD
         CKC_KEY_LABEL, CKC_KEY_ALGO, CKC_KEY_LENGTH
-        CKC_KEY_USAGE, CKC_CPS_KEY_TYPE
+        CKC_CPS_KEY_TYPE
     """
     # Admin credentials (post-ceremony admin)
     admin_username: str = "admin"
@@ -389,7 +389,15 @@ class CustomerKeyCeremonyData:
     key_label: str = "CKC_E2E_1"
     key_algo: str = "AES"
     key_length: str = "256 bits"
-    key_usage: str = "3F"
+    key_usages: list = field(default_factory=lambda: [
+        "cb_TRANSPORT_KEY",
+        "cbUSAGE_DERIVATION_KEY",
+        "cb_USAGE_VERIFY",
+        "cbUSAGE_CHIPER",
+        "cbUSAGE_SIGN",
+        "cbUSAGE_DECIPHER",
+    ])
+    kcv_algo: str = "Standard_Algorithm"
     cps_key_type: str = "ZCMK_EXP"
 
     # Key Custodian Parties
@@ -422,7 +430,7 @@ class CustomerKeyCeremonyData:
             "key_label": os.environ.get("CKC_KEY_LABEL", defaults.key_label),
             "key_algo": os.environ.get("CKC_KEY_ALGO", defaults.key_algo),
             "key_length": os.environ.get("CKC_KEY_LENGTH", defaults.key_length),
-            "key_usage": os.environ.get("CKC_KEY_USAGE", defaults.key_usage),
+            "key_usages": defaults.key_usages,
             "cps_key_type": os.environ.get("CKC_CPS_KEY_TYPE", defaults.cps_key_type),
         }
 

@@ -85,28 +85,29 @@ def ckc_create_custodian_parties():
 
 
 def ckc_proceed_next():
-    """Click Next after custodian creation → dismiss OK → wait for mode selection.
+    """Click Next after custodian creation → wait for HSM sync → mode selection.
 
-    Follows the same pattern as ``confirm_admin_and_transition`` in the
-    FIPS key ceremony: dismiss confirmation dialog, brief pause for the
-    HSM to process, refresh UI tree, then wait for the next screen element.
+    After clicking Next the HSM syncs (can take minutes).
+    We poll until ``btnAdd1`` disappears (custodian page gone),
+    confirming the page has transitioned to mode selection.
     """
 
     def _action(ctx):
-        from sphere_e2e_test_framework.pages.base_page import BasePage, TIMEOUT
+        import time
 
         ctx.driver.click_button(auto_id="btnNext")
-        logger.info("Next clicked — waiting for HSM to process...")
+        logger.info("Next clicked — waiting for HSM sync...")
 
-        base = BasePage(ctx.driver, ctx.evidence)
-        base.dismiss_ok(
-            step_name="Then: Custodian parties created successfully",
-        )
-        time.sleep(10)
-        ctx.driver.refresh_window()
-        ctx.driver.wait_for_element(
-            timeout=TIMEOUT, auto_id="rbDisagree",
-        )
+        # Poll until custodian creation page is gone (btnAdd1 only exists there)
+        for i in range(60):
+            time.sleep(5)
+            ctx.driver.refresh_window()
+            if not ctx.driver.element_exists(auto_id="btnAdd1"):
+                logger.info(f"Page transitioned after ~{(i + 1) * 5}s")
+                break
+        else:
+            raise RuntimeError("Custodian creation page did not transition after 5 minutes")
+
         logger.info("Operation mode selection screen ready")
 
     return Step("Proceed to next phase", _action)
@@ -116,8 +117,11 @@ def ckc_select_generate_and_export():
     """Select GENERATE_AND_EXPORT mode and proceed."""
 
     def _action(ctx):
+        import time
+
         from sphere_e2e_test_framework.pages.e_admin.ckc_page import CustomerKeyCeremonyPage
 
+        time.sleep(5)
         ckc = ctx.get("_ckc_page") or CustomerKeyCeremonyPage(ctx.driver, ctx.evidence)
         ckc.select_generate_and_export(
             step_name="And: User selects GENERATE_AND_EXPORT mode",
@@ -137,8 +141,11 @@ def ckc_configure_key():
             key_label=ctx.td.key_label,
             key_algo=ctx.td.key_algo,
             key_length=ctx.td.key_length,
-            key_usage=ctx.td.key_usage,
+            key_usages=ctx.td.key_usages,
             cps_key_type=ctx.td.cps_key_type,
+            key_type=getattr(ctx.td, "key_type", None),
+            kcv_algo=getattr(ctx.td, "kcv_algo", None),
+            valid_date=getattr(ctx.td, "valid_date", None),
             step_name="And: User configures key parameters",
         )
 
@@ -235,3 +242,51 @@ def ckc_finish():
         )
 
     return Step("Finish CKC", _action)
+
+
+def ckc_save_export_results(output_dir="output"):
+    """Save CKC export values and key summary to a JSON file.
+
+    Reads from ctx.state['ckc_export_values'] and ctx.state['ckc_key_summary'].
+    Writes to ``<output_dir>/ckc_export.json``.
+    """
+
+    def _action(ctx):
+        import json
+        import re
+        from pathlib import Path
+
+        def _strip_spaces(obj):
+            """Recursively remove all spaces from string values."""
+            if isinstance(obj, str):
+                return re.sub(r"\s+", "", obj)
+            if isinstance(obj, dict):
+                return {k: _strip_spaces(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_strip_spaces(item) for item in obj]
+            return obj
+
+        exports_list = ctx.get("ckc_export_values", [])
+        summary = ctx.get("ckc_key_summary", {})
+
+        # Group exports by username as key (without mutating original)
+        exports = {}
+        for i, entry in enumerate(exports_list, start=1):
+            username = entry.get("username", f"kcp{i}")
+            exports[username] = {k: v for k, v in entry.items() if k != "username"}
+
+        data = _strip_spaces({
+            "exports": exports,
+            "key_summary": summary,
+        })
+
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        file_path = out_path / "ckc_export.json"
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"CKC export results saved to {file_path.resolve()}")
+
+    return Step("Save CKC export results", _action)
