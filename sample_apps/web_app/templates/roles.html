@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Roles - Ankole Framework{% endblock %}
+{% block page_header %}<strong>Roles Management</strong>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">All Roles</h5>
+    <a href="{{ url_for('role_create') }}" class="btn btn-primary" id="add-role-btn">
+        <i class="bi bi-plus-circle"></i> Add Role
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="roles-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Permissions</th>
+                        <th>Users</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for role in roles %}
+                    <tr id="role-row-{{ role.id }}">
+                        <td>{{ role.id }}</td>
+                        <td>
+                            <span class="badge
+                                {% if role.name == 'admin' %}bg-danger
+                                {% elif role.name == 'approver' %}bg-warning text-dark
+                                {% else %}bg-secondary
+                                {% endif %}">
+                                {{ role.name }}
+                            </span>
+                        </td>
+                        <td>{{ role.description or '-' }}</td>
+                        <td>
+                            {% for perm in (role.permissions or []) %}
+                            <span class="badge bg-light text-dark border me-1">{{ perm }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <span class="badge bg-info">{{ role.users.count() }}</span>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('role_edit', role_id=role.id) }}"
+                                   class="btn btn-outline-primary"
+                                   id="edit-role-{{ role.id }}"
+                                   title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('role_delete', role_id=role.id) }}" class="d-inline">
+                                    <button type="submit"
+                                            class="btn btn-outline-danger"
+                                            id="delete-role-{{ role.id }}"
+                                            title="Delete"
+                                            onclick="return confirm('Delete role {{ role.name }}?')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

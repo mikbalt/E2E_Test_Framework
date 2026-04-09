@@ -1,4 +1,4 @@
-# Sphere E2E Test Framework — Decoupling & Modularity Brief
+# Ankole Framework — Decoupling & Modularity Brief
 
 **Presenter**: QA Automation Engineer
 **Date**: March 2026
@@ -8,11 +8,11 @@
 
 ## 1. Problem Statement
 
-Framework v1.0 was tightly coupled to the E-Admin application:
+Framework v1.0 was tightly coupled to the Workspace Web application:
 
 | Problem | Impact |
 |---------|--------|
-| `BasePage` contained E-Admin-specific methods (sidebar nav, T&C, logout) | New apps (CPS, Proxy) inherited 10+ irrelevant methods |
+| `BasePage` contained Workspace Web-specific methods (sidebar nav, T&C, logout) | New apps (CPS, Proxy) inherited 10+ irrelevant methods |
 | `plugin.py` was a single 400+ line file | Hard to navigate, test, or extend |
 | Each new app required ~120 lines of boilerplate conftest fixtures | Slow onboarding, copy-paste bugs |
 | No driver interface contract | Impossible to swap pywinauto for Playwright or mock drivers |
@@ -32,16 +32,16 @@ Framework v1.0 was tightly coupled to the E-Admin application:
 BEFORE                          AFTER
 ──────                          ─────
 BasePage                        BasePage (generic WinForms only)
-├── LoginPage                   ├── EAdminBasePage (E-Admin nav)
+├── LoginPage                   ├── EAdminBasePage (Workspace Web nav)
 ├── DashboardPage               │   ├── LoginPage
 ├── KeyCeremonyPage             │   ├── DashboardPage
-└── ... (all apps)              │   └── ... (10 E-Admin pages)
+└── ... (all apps)              │   └── ... (10 Workspace Web pages)
                                 ├── CPS pages (clean base)
                                 └── Proxy pages (clean base)
 ```
 
 - `BasePage`: `_step()`, `dismiss_ok()`, `dismiss_ok_with_message()` — nothing app-specific
-- `EAdminBasePage`: `agree_and_next()`, `goto_user_management()`, `logout()` — E-Admin only
+- `EAdminBasePage`: `agree_and_next()`, `goto_user_management()`, `logout()` — Workspace Web only
 - New apps inherit `BasePage` directly — zero unwanted methods
 
 ### Phase 2: Plugin Decomposition
@@ -63,7 +63,7 @@ Each module < 100 LOC. Single responsibility. Independently testable.
 ### Phase 3: DriverProtocol
 
 ```python
-from sphere_e2e_test_framework.driver.base import DriverProtocol
+from ankole.driver.base import DriverProtocol
 
 @runtime_checkable
 class DriverProtocol(Protocol):
@@ -127,8 +127,8 @@ Fast environments → lower values. Slow VMs → higher values. No code changes.
 |-----|--------|-------|
 | Hook shadowing | `depends_on` marker silently broken | `track_passed_case()` helper, explicit imports |
 | Flow headless crash | `Step.execute` crashes if `evidence=None` | Guard: logs step name, skips screenshots |
-| Screenshot scope | Only captures E-Admin failures | Auto-detects any `*_driver` fixture |
-| Evidence logger | Root logger pollution | Scoped to `sphere_e2e_test_framework` namespace |
+| Screenshot scope | Only captures Workspace Web failures | Auto-detects any `*_driver` fixture |
+| Evidence logger | Root logger pollution | Scoped to `ankole` namespace |
 | Missing markers | Consumer repos fail `--strict-markers` | All 13 markers registered in plugin |
 
 ---
@@ -136,7 +136,7 @@ Fast environments → lower values. Slow VMs → higher values. No code changes.
 ## 3. Architecture (Current State)
 
 ```
-sphere_e2e_test_framework/
+ankole/
 ├── plugin/               ← pytest plugin (auto-registered)
 │   ├── config.py         ← YAML + env vars + data-driven overrides
 │   ├── hooks.py          ← lifecycle hooks + screenshots
@@ -153,8 +153,8 @@ sphere_e2e_test_framework/
 ├── testing/              ← Conftest factories + shared hooks
 └── pages/
     ├── base_page.py      ← Generic WinForms (clean)
-    └── e_admin/
-        ├── e_admin_base_page.py  ← E-Admin nav (isolated)
+    └── workspace/
+        ├── workspace_base_page.py  ← Workspace Web nav (isolated)
         └── ...            ← 10 page classes
 ```
 
@@ -201,10 +201,10 @@ sphere_e2e_test_framework/
 | Decision | Rationale | Trade-off |
 |----------|-----------|-----------|
 | `Protocol` over ABC | Duck typing — existing code works without modification | `issubclass()` limited in Python < 3.12 |
-| `EAdminBasePage` split | Clean inheritance for new apps | One extra class in E-Admin hierarchy |
+| `EAdminBasePage` split | Clean inheritance for new apps | One extra class in Workspace Web hierarchy |
 | Factory conftest | 4 lines vs 120 lines | Less visible — need to read factory source for customization |
 | Class-level timing constants | Zero hardcoded sleeps, tunable | Instance mutation (not immutable config object) |
-| Scoped logger | No cross-contamination | Only captures `sphere_e2e_test_framework.*` logs, not third-party |
+| Scoped logger | No cross-contamination | Only captures `ankole.*` logs, not third-party |
 | `track_passed_case()` helper | Solves hook shadowing cleanly | Consumers must call it explicitly if they override the hook |
 
 ---

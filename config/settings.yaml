@@ -1,156 +1,46 @@
 # =============================================================================
-# Sphere E2E Test Framework - Configuration
+# Ankole Framework - Configuration
 # =============================================================================
-# Platform-aware: paths auto-resolve based on OS.
-# Override via environment variables for CI/CD flexibility.
+# Generic workspace domain. Override via environment variables for flexibility.
 
-# --- Data-driven env var → config path mapping ---
-# Each key is an environment variable name. The value is a dotted config
-# path with an optional :type suffix (int, bool). At load time, if the env
-# var is set, its value is written into the config dict at the given path.
+# --- Data-driven env var -> config path mapping ---
 env_overrides:
-  HSM_IP: "apps.e_admin.connection.ip"
-  HSM_PORT: "apps.e_admin.connection.port"
-  E_ADMIN_PATH: "apps.e_admin.path"
-  E_ADMIN_APP_LOGS: "apps.e_admin.app_logs_dir"
+  WORKSPACE_WEB_URL: "workspace.web.base_url"
+  WORKSPACE_API_URL: "workspace.api.base_url"
   PUSHGATEWAY_URL: "metrics.pushgateway_url"
   LOKI_URL: "remote_logs.loki_url"
   TCMS_API_URL: "kiwi_tcms.url"
   KIWI_PLAN_ID: "kiwi_tcms.plan_id:int"
   KIWI_BUILD_ID: "kiwi_tcms.build_id:int"
 
-# --- Data-driven env var → list item fields ---
-# For config values inside lists (e.g. health_check.checks[]), use
-# env_overrides_list. Each key is a dotted path to a list. Values map
-# env vars to field specs: "field_name" or "field_name:type?condition".
-env_overrides_list:
-  health_check.checks:
-    HSM_IP: "host"
-    HSM_PORT: "port:int?type=tcp"
+# --- Workspace Configuration ---
+workspace:
+  web:
+    base_url: "${WORKSPACE_WEB_URL}"
+    browser: "chromium"
+    headless: true
+    slow_mo: 0
+    timeout: 30000
+    viewport:
+      width: 1280
+      height: 720
+  api:
+    base_url: "${WORKSPACE_API_URL}"
+    timeout: 30
+  cli:
+    command: "ankole-cli"
+    api_url: "${WORKSPACE_API_URL}"
 
-# --- Page Timeout ---
-# Maximum seconds to wait for UI elements (HSM operations can exceed 2 min).
-# Override via env var: PAGE_TIMEOUT=600 (for slow VMs / long HSM ops).
-# Default: 300 seconds (5 minutes).
-# page_timeout: 300
-
-# --- Application Under Test (Windows only) ---
+# --- Desktop Applications (Windows only, for pywinauto demo) ---
 apps:
-  # E-Admin Application
-  e_admin:
-    path: "${E_ADMIN_PATH}"             # Required — set in .env
-    class_name: "WindowsForms10\\.Window.*"  # WinForms app (empty title)
-    startup_wait: 5                # Seconds to wait after launch
-    backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
-    app_logs_dir: "${E_ADMIN_APP_LOGS}" # App logs dir — collected + zipped after each test
-    compact_logs_dir: 'C:\SPHERE_HSM\Admin Application\AppLogs\Compact'  # Cleared before start to avoid signature popup
-    popup_dismiss_buttons: ["OK", "Yes", "Close"]   # Button titles for auto-dismiss
-    popup_dismiss_auto_ids: ["2", "btnOKE"]        # Button auto_ids for auto-dismiss
-    retry:
-      max_attempts: 3                   # Total attempts for popup-retry (default: 2)
-      delay: 0.5                        # Seconds between retries
-    window_monitor:
-      enabled: true                  # Background monitor for unexpected windows
-      interval: 1.0                  # Polling interval in seconds
-      auto_dismiss: false            # Auto-close unexpected windows (future)
-    connection:
-      ip: "${HSM_IP}"                # Required — set in .env
-      port: "${HSM_PORT}"           # Required — set in .env
-
-  # CPS Application (uncomment when ready)
-  # cps:
-  #   path: "${CPS_APP_PATH}"
-  #   class_name: "WindowsForms10\\.Window.*"
-  #   startup_wait: 5
-  #   backend: "uia"
-  #   app_logs_dir: "${CPS_APP_LOGS}"
-  #   popup_dismiss_buttons: ["OK", "Yes", "Close"]
-  #   popup_dismiss_auto_ids: ["2"]
-  #   window_monitor:
-  #     enabled: true
-  #     interval: 1.0
-  #   connection:
-  #     ip: "${HSM_IP}"
-  #     port: "${HSM_PORT}"
-
-  # Proxy Application (uncomment when ready)
-  # proxy:
-  #   path: "${PROXY_APP_PATH}"
-  #   class_name: "WindowsForms10\\.Window.*"
-  #   startup_wait: 5
-  #   backend: "uia"
-  #   app_logs_dir: "${PROXY_APP_LOGS}"
-  #   popup_dismiss_buttons: ["OK", "Yes", "Close"]
-  #   popup_dismiss_auto_ids: ["2"]
-  #   window_monitor:
-  #     enabled: true
-  #     interval: 1.0
-  #   connection:
-  #     ip: "${HSM_IP}"
-  #     port: "${HSM_PORT}"
-
-  # Example: Windows Calculator (for initial testing/demo)
   calculator:
     path: "calc.exe"
     title: "Calculator"
     startup_wait: 2
     backend: "uia"
 
-  testhsm:
-    path: "${TESTHSM_PATH}"             # Required — set in .env
-    class_name: "WindowsForms10\\.Window.*"  # WinForms app (empty title)
-    startup_wait: 5                # Seconds to wait after launch
-    backend: "uia"                 # "uia" (WPF/modern) or "win32" (WinForms/classic)
-    app_logs_dir: "${TESTHSM_APP_LOGS}" # App logs dir — collected + zipped after each test
-    window_monitor:
-      enabled: true                  # Background monitor for unexpected windows
-      interval: 1.0                  # Polling interval in seconds
-      auto_dismiss: false            # Auto-close unexpected windows (future)
-
-
 # --- Console Tools (cross-platform) ---
-# Paths can be overridden per platform.
-# Or set env: PKCS11_TOOL_PATH=/usr/bin/pkcs11-tool
-console_tools:
-  pkcs11_native:
-    command_windows: "PKCS11.exe"
-    command_linux: "pkcs11-tool"
-    working_dir_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release"
-    working_dir_linux: "/opt/tools/pkcs11"
-    timeout: 30
-
-  pkcs11_go:
-    command_windows: "pkcs11-go-tool.exe"
-    command_linux: "./pkcs11-go-tool"
-    working_dir_windows: "C:\\Tools\\pkcs11-go"
-    working_dir_linux: "/opt/tools/pkcs11-go"
-    timeout: 30
-
-  pkcs11_java:
-    command: "java"                # Java is cross-platform
-    args: ["-jar", "pkcs11-test.jar"]
-    working_dir_windows: "C:\\Tools\\pkcs11-java"
-    working_dir_linux: "/opt/tools/pkcs11-java"
-    timeout: 60
-
-  pkcs11_cpp:
-    command_windows: "pkcs11_test.exe"
-    command_linux: "./pkcs11_test"
-    working_dir_windows: "C:\\Tools\\pkcs11-cpp"
-    working_dir_linux: "/opt/tools/pkcs11-cpp"
-    timeout: 30
-
-  testhsm_cli:
-    executable_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/TestHsm.Cli.exe"
-    config_HL_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/config_HL_test.yml"
-    config_DP_windows: "C:/Users/Administrator/Documents/HSM-Tools/Test Folder/Test4/Tools/TestHsm.Cli_1.26.0.0-beta1/config_DP_test.yml"
-
-  pkcs11_cpp_gtest_fips:
-    command_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release\\PKCS11.exe"
-    working_dir_windows: "C:\\Users\\admin\\Documents\\HSM_Test\\Test_PKCS#11\\Test_v0050\\GTest_Internal\\x64\\Release"
-    dll: "libIdemiaPKCS11.dll"
-    gtest_filter: "hsmDeprovisioning.testGoodCase_01"
-    timeout: 120
+console_tools: {}
 
 # --- Evidence Settings ---
 evidence:
@@ -158,93 +48,51 @@ evidence:
   screenshots: true
   screenshot_on_failure: true
   screenshot_on_step: true
-  # video_recording: TODO — not yet implemented
   log_level: "INFO"
 
 # --- Health Check (pre-execution environment verification) ---
-# Runs before test collection. Aborts early with clear diagnostics if
-# the target environment is not ready. Bypass with --skip-health-check.
 health_check:
-  enabled: true                    # Pre-execution environment verification
+  enabled: false
   checks:
-    - type: "ping"
-      host: "${HSM_IP}"            # Set in .env
-      timeout: 5
-      label: "HSM Network Reachability"
     - type: "tcp"
-      host: "${HSM_IP}"            # Set in .env
-      port: "${HSM_PORT}"          # Set in .env
+      host: "localhost"
+      port: 5000
       timeout: 5
-      label: "HSM E-Admin Port"
+      label: "Workspace Web App"
+    - type: "tcp"
+      host: "localhost"
+      port: 8000
+      timeout: 5
+      label: "Workspace API"
 
 # --- Kiwi TCMS ---
-# Bidirectional mode (--kiwi-run-id): only url + credentials needed.
-# Push-only mode (--kiwi-create-run): also needs plan_id (and optionally build_id).
 kiwi_tcms:
-  enabled: true                   # Set true after Kiwi TCMS is configured
-  url: "${TCMS_API_URL}"           # Required — set in .env
-  # Credentials: TCMS_USERNAME, TCMS_PASSWORD must be set in .env
-  plan_id: "${KIWI_PLAN_ID}"      # Optional — only for --kiwi-create-run
-  build_id: "${KIWI_BUILD_ID}"    # Optional — only for --kiwi-create-run
-  auto_create_run: false           # Set true to auto-create runs (needs plan_id)
-  # status_ids:                    # Optional: override if your Kiwi uses different IDs
-  #   PASSED: 4
-  #   FAILED: 5
-  #   BLOCKED: 6
+  enabled: false
+  url: "${TCMS_API_URL}"
+  plan_id: "${KIWI_PLAN_ID}"
+  build_id: "${KIWI_BUILD_ID}"
+  auto_create_run: false
 
 # --- Grafana / Prometheus ---
 metrics:
-  enabled: true                  # Set true after Prometheus Pushgateway is ready
-  pushgateway_url: "${PUSHGATEWAY_URL}"      # Optional — set in .env
-  job_name: "E2E_Sphere_HSM"
-  metric_prefix: "hsm"            # Prometheus metric name prefix (keeps hsm_* names)
-  suite_name: "hsm"               # Suite label for record_suite()
-  # run_id: Auto-generated per session (override with --run-id CLI flag)
+  enabled: false
+  pushgateway_url: "${PUSHGATEWAY_URL}"
+  job_name: "ankole_e2e"
+  metric_prefix: "ankole"
+  suite_name: "workspace"
   labels:
-    environment: "staging"
-    team: "security"
+    environment: "docker"
+    team: "qa"
 
 # --- Remote Logs (Loki) ---
-# After each test, query Loki for logs from all VMs within the test's
-# time range. Results are saved as .log files, zipped, and attached to Allure.
 remote_logs:
-  enabled: true                     # Set true after Loki is reachable
-  loki_url: "${LOKI_URL}"           # Required — set in .env
-  default_limit: 5000                 # Max log lines per query (Loki server limit -5000)
-  timeout: 30                       # HTTP request timeout (seconds)
-  time_buffer: 60                   # Extra seconds ± to cover clock skew between VMs
+  enabled: false
+  loki_url: "${LOKI_URL}"
+  default_limit: 5000
+  timeout: 30
+  time_buffer: 60
   queries:
-    - label: "sphere_hsm_admin"
-      query: '{job="sphere_hsm_admin"}'
-    - label: "sphere_hsm_admin_applog"
-      query: '{job="sphere_hsm_admin_applog"}'
-    - label: "sphere_hsm_proxy"
-      query: '{job="sphere_hsm_proxy"}'
-      limit: 50000                    # Paginated in 5000-line batches (proxy very verbose)
-
-# --- Remote Agents ---
-# Trigger automation on remote Windows VMs via HTTP.
-# Each agent must be running on its target VM (interactive desktop session).
-# Supports multiple VMs — access by name: remote["proxy_vm"].run_script(...)
-# See docs/remote_agent_guide.md for setup instructions.
-remote_agents:
-  enabled: false                       # Set true after agents are running
-  default_port: 5050                   # Default port if not specified per agent
-  default_timeout: 120                 # Default command timeout in seconds
-  agents:
-    proxy_vm:
-      host: "${REMOTE_AGENT_PROXY_HOST}"   # e.g. 10.66.1.10 — set in .env
-      port: 5050
-      auth_token: ""
-      description: "HSM Proxy VM"
-    # key_server_vm:
-    #   host: "${REMOTE_AGENT_KEYS_HOST}"  # e.g. 10.66.1.20
-    #   port: 5050
-    #   auth_token: ""
-    #   description: "Key Server VM"
-
-# --- Jenkins ---
-jenkins:
-  workspace_windows: "C:\\Jenkins\\workspace\\hsm-tests"
-  workspace_linux: "/var/lib/jenkins/workspace/hsm-tests"
-  artifacts_dir: "evidence"
+    - label: "workspace_web"
+      query: '{job="workspace_web"}'
+    - label: "workspace_api"
+      query: '{job="workspace_api"}'

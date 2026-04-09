@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "pushgateway"
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  - job_name: "workspace-web"
+    metrics_path: /health
+    static_configs:
+      - targets: ["workspace-web:5000"]
+
+  - job_name: "workspace-api"
+    metrics_path: /api/health
+    static_configs:
+      - targets: ["workspace-api:8000"]

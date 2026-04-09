@@ -1,0 +1,133 @@
+name: Ankole Framework CI
+
+on:
+  push:
+    branches: [main, feat/*]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff
+      - run: ruff check ankole/ tests/
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[all]"
+      - run: pytest tests/unit/ -v --alluredir=evidence/allure-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-unit
+          path: evidence/allure-results/
+
+  integration-tests:
+    name: Integration Tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [api, web, cli]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankole
+          POSTGRES_PASSWORD: ankole
+          POSTGRES_DB: ankole
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Setup database
+        run: psql -h localhost -U ankole -d ankole -f sample_apps/db/init.sql
+        env:
+          PGPASSWORD: ankole
+      - name: Start sample apps
+        run: |
+          pip install -r sample_apps/api/requirements.txt
+          pip install -r sample_apps/web_app/requirements.txt
+          cd sample_apps/api && DATABASE_URL=postgresql://ankole:ankole@localhost:5432/ankole uvicorn sample_apps.api.main:app --host 0.0.0.0 --port 8000 &
+          cd sample_apps/web_app && DATABASE_URL=postgresql://ankole:ankole@localhost:5432/ankole python app.py &
+          sleep 5
+        env:
+          DATABASE_URL: postgresql://ankole:ankole@localhost:5432/ankole
+      - name: Install framework
+        run: pip install -e ".[all]"
+      - name: Install Playwright (web suite only)
+        if: matrix.suite == 'web'
+        run: playwright install chromium --with-deps
+      - name: Run tests
+        run: pytest tests/${{ matrix.suite }}/ -v --alluredir=evidence/allure-results
+        env:
+          WORKSPACE_WEB_URL: http://localhost:5000
+          WORKSPACE_API_URL: http://localhost:8000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-${{ matrix.suite }}
+          path: evidence/allure-results/
+
+  desktop-tests:
+    name: Desktop Tests
+    runs-on: windows-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[desktop]"
+      - run: pytest tests/desktop/ -v --alluredir=evidence/allure-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-desktop
+          path: evidence/allure-results/
+
+  allure-report:
+    name: Allure Report
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [unit-tests, integration-tests, desktop-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: allure-results-*
+          path: evidence/allure-results
+          merge-multiple: true
+      - uses: simple-elf/allure-report-action@master
+        if: always()
+        with:
+          allure_results: evidence/allure-results
+          allure_report: evidence/allure-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: evidence/allure-report/

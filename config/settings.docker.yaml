@@ -1,0 +1,80 @@
+# =============================================================================
+# Ankole Framework - Docker Configuration Overrides
+# =============================================================================
+# Use with: ANKOLE_CONFIG_PATH=config/settings.docker.yaml
+
+env_overrides:
+  PUSHGATEWAY_URL: "metrics.pushgateway_url"
+  LOKI_URL: "remote_logs.loki_url"
+
+workspace:
+  web:
+    base_url: "http://localhost:5000"
+    browser: "chromium"
+    headless: true
+    slow_mo: 0
+    timeout: 30000
+    viewport:
+      width: 1280
+      height: 720
+  api:
+    base_url: "http://localhost:8000"
+    timeout: 30
+  cli:
+    command: "ankole-cli"
+    api_url: "http://localhost:8000"
+
+apps:
+  calculator:
+    path: "calc.exe"
+    title: "Calculator"
+    startup_wait: 2
+    backend: "uia"
+
+console_tools: {}
+
+evidence:
+  base_dir: "evidence"
+  screenshots: true
+  screenshot_on_failure: true
+  screenshot_on_step: true
+  log_level: "INFO"
+
+health_check:
+  enabled: true
+  checks:
+    - type: "tcp"
+      host: "localhost"
+      port: 5000
+      timeout: 5
+      label: "Workspace Web App"
+    - type: "tcp"
+      host: "localhost"
+      port: 8000
+      timeout: 5
+      label: "Workspace API"
+
+kiwi_tcms:
+  enabled: false
+
+metrics:
+  enabled: true
+  pushgateway_url: "http://localhost:9091"
+  job_name: "ankole_e2e"
+  metric_prefix: "ankole"
+  suite_name: "workspace"
+  labels:
+    environment: "docker"
+    team: "qa"
+
+remote_logs:
+  enabled: true
+  loki_url: "http://localhost:3100"
+  default_limit: 5000
+  timeout: 30
+  time_buffer: 60
+  queries:
+    - label: "workspace_web"
+      query: '{job="workspace_web"}'
+    - label: "workspace_api"
+      query: '{job="workspace_api"}'

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sphere_e2e_test_framework.plugin.config import (
+from ankole.plugin.config import (
     _set_nested,
     _apply_env_overrides,
     _resolve_placeholders,
@@ -35,19 +35,19 @@ class TestSetNested:
 
     def test_deep_nesting(self):
         cfg = {}
-        _set_nested(cfg, "apps.e_admin.connection.ip", "10.0.0.1")
-        assert cfg["apps"]["e_admin"]["connection"]["ip"] == "10.0.0.1"
+        _set_nested(cfg, "apps.workspace.connection.ip", "10.0.0.1")
+        assert cfg["apps"]["workspace"]["connection"]["ip"] == "10.0.0.1"
 
     def test_preserves_existing_keys(self):
-        cfg = {"apps": {"e_admin": {"path": "app.exe"}}}
-        _set_nested(cfg, "apps.e_admin.connection.ip", "10.0.0.1")
-        assert cfg["apps"]["e_admin"]["path"] == "app.exe"
-        assert cfg["apps"]["e_admin"]["connection"]["ip"] == "10.0.0.1"
+        cfg = {"apps": {"workspace": {"path": "app.exe"}}}
+        _set_nested(cfg, "apps.workspace.connection.ip", "10.0.0.1")
+        assert cfg["apps"]["workspace"]["path"] == "app.exe"
+        assert cfg["apps"]["workspace"]["connection"]["ip"] == "10.0.0.1"
 
     def test_overwrites_existing_value(self):
-        cfg = {"apps": {"e_admin": {"connection": {"ip": "old"}}}}
-        _set_nested(cfg, "apps.e_admin.connection.ip", "new")
-        assert cfg["apps"]["e_admin"]["connection"]["ip"] == "new"
+        cfg = {"apps": {"workspace": {"connection": {"ip": "old"}}}}
+        _set_nested(cfg, "apps.workspace.connection.ip", "new")
+        assert cfg["apps"]["workspace"]["connection"]["ip"] == "new"
 
 
 class TestTypeCasters:
@@ -73,15 +73,15 @@ class TestApplyEnvOverrides:
         """env_overrides section should set values at dotted paths."""
         cfg = {
             "env_overrides": {
-                "TEST_IP": "apps.e_admin.connection.ip",
-                "TEST_PORT": "apps.e_admin.connection.port",
+                "TEST_IP": "apps.workspace.connection.ip",
+                "TEST_PORT": "apps.workspace.connection.port",
             },
         }
         with patch.dict(os.environ, {"TEST_IP": "1.2.3.4", "TEST_PORT": "9999"}):
             _apply_env_overrides(cfg)
 
-        assert cfg["apps"]["e_admin"]["connection"]["ip"] == "1.2.3.4"
-        assert cfg["apps"]["e_admin"]["connection"]["port"] == "9999"
+        assert cfg["apps"]["workspace"]["connection"]["ip"] == "1.2.3.4"
+        assert cfg["apps"]["workspace"]["connection"]["port"] == "9999"
 
     def test_env_overrides_with_int_type(self):
         """Type hint ':int' should cast value to integer."""
@@ -160,9 +160,9 @@ class TestApplyEnvOverrides:
 
     def test_no_env_overrides_section(self):
         """Config without env_overrides should still work (backward compat)."""
-        cfg = {"apps": {"e_admin": {"path": "app.exe"}}}
+        cfg = {"apps": {"workspace": {"path": "app.exe"}}}
         _apply_env_overrides(cfg)  # should not raise
-        assert cfg["apps"]["e_admin"]["path"] == "app.exe"
+        assert cfg["apps"]["workspace"]["path"] == "app.exe"
 
 
 class TestResolvePlaceholders:

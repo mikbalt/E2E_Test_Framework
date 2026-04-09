@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sphere_e2e_test_framework.flows.base import (
+from ankole.flows.base import (
     FlowContext,
     Step,
     Flow,

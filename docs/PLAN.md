@@ -1,4 +1,4 @@
-# HSM Test Framework — Maximize Effort Plan
+# Workspace Test Framework — Maximize Effort Plan
 
 > Generated from full codebase analysis on 2026-02-27.
 > Goal: Identify the highest-ROI actions to get maximum value from the framework.
@@ -21,7 +21,7 @@
 | `grafana_push.py` — Prometheus Pushgateway metrics | Done |
 | `plugin.py` — Auto-registered pytest plugin with fixtures & hooks | Done |
 | Jenkinsfile — Multi-platform parallel pipeline | Done |
-| Consumer repo templates (UI + PKCS#11) | Done |
+| Consumer repo templates (UI + CLI) | Done |
 | Setup scripts, UI Inspector, SETUP_GUIDE, README | Done |
 
 ### What's Disabled / Unused
@@ -39,9 +39,9 @@
 
 | File | Tests | Status |
 |------|-------|--------|
-| `tests/ui/test_e_admin.py` | 1 test (`test_connect_and_load_dashboard`) | Active — only real test |
+| `tests/ui/test_workspace.py` | 1 test (`test_connect_and_load_dashboard`) | Active — only real test |
 | `tests/ui/test_sample_app.py` | 2 tests (Calculator demo) + 1 skipped template | Demo only |
-| `tests/console/test_pkcs11_sample.py` | 7 tests (PKCS#11 samples) | Sample — tools not configured |
+| `tests/console/test_pkcs11_sample.py` | 7 tests (CLI samples) | Sample — tools not configured |
 | Framework unit tests | 0 | None exist |
 
 **Bottom line:** The framework has 10 modules with rich capabilities. The actual test suite has **1 real test**.
@@ -65,7 +65,7 @@
 Pure configuration changes with immediate impact. All resolved.
 
 - [x] **Enable Health Check** — flip `health_check.enabled: true` in `settings.yaml`
-  - Prevents wasted CI runs when HSM at `10.66.1.10:52000` is unreachable
+  - Prevents wasted CI runs when Workspace at `10.66.1.10:52000` is unreachable
   - Already configured with ping + TCP checks
 - [x] **Add `--smoke-gate` to Jenkinsfile** — add flag to pytest command in both Win + Linux stages
   - Fail-fast: if smoke tests fail, skip remaining tests
@@ -78,17 +78,17 @@ Pure configuration changes with immediate impact. All resolved.
 
 ### Tier 2: This Sprint (Days)
 
-#### Write More E-Admin Tests
+#### Write More Workspace Web Tests
 
-The app is configured (`AdminApp.exe`, WinForms, HSM simulator). Only connection is tested. Add:
+The app is configured (`AdminApp.exe`, WinForms, Workspace simulator). Only connection is tested. Add:
 
-- [ ] **E-Admin — Settings Navigation**: Open settings panel, verify fields visible
-- [ ] **E-Admin — HSM Slot Listing**: Connect → list available slots → verify output
-- [ ] **E-Admin — Key Generation**: Connect → generate key → verify key appears in list
-- [ ] **E-Admin — Certificate Operations**: Import/export certificate workflows
-- [ ] **E-Admin — Disconnect and Reconnect**: Connect → disconnect → reconnect → verify state
-- [ ] **E-Admin — Connection Error Handling**: Wrong IP/port → verify error message shown
-- [ ] **E-Admin — Multi-step Workflow**: Connect → operate → verify → disconnect (full lifecycle)
+- [ ] **Workspace Web — Settings Navigation**: Open settings panel, verify fields visible
+- [ ] **Workspace Web — Workspace Slot Listing**: Connect → list available slots → verify output
+- [ ] **Workspace Web — Key Generation**: Connect → generate key → verify key appears in list
+- [ ] **Workspace Web — Certificate Operations**: Import/export certificate workflows
+- [ ] **Workspace Web — Disconnect and Reconnect**: Connect → disconnect → reconnect → verify state
+- [ ] **Workspace Web — Connection Error Handling**: Wrong IP/port → verify error message shown
+- [ ] **Workspace Web — Multi-step Workflow**: Connect → operate → verify → disconnect (full lifecycle)
 
 > Use `scripts/inspect_app.py --title "AdminApp" --depth 5` to discover all available UI elements first.
 
@@ -132,12 +132,12 @@ The app is configured (`AdminApp.exe`, WinForms, HSM simulator). Only connection
 - [ ] Graceful cleanup if app crashes mid-test (process kill fallback)
 - [ ] Per-step timeout (not just per-test)
 
-#### Page Object Model for E-Admin
+#### Page Object Model for Workspace Web
 
-- [ ] Create `pages/e_admin_main.py` — main window actions
-- [ ] Create `pages/e_admin_settings.py` — settings panel actions
-- [ ] Create `pages/e_admin_connection.py` — connection dialog actions
-- [ ] Refactor `test_e_admin.py` to use POM classes
+- [ ] Create `pages/workspace_main.py` — main window actions
+- [ ] Create `pages/workspace_settings.py` — settings panel actions
+- [ ] Create `pages/workspace_connection.py` — connection dialog actions
+- [ ] Refactor `test_workspace.py` to use POM classes
 
 ---
 
@@ -179,7 +179,7 @@ python -m pytest --smoke-gate --kiwi-create-run -m ${suite} ...
 ```
                         HIGH IMPACT
                             |
-    Enable health check  *  |  * Write more E-Admin tests
+    Enable health check  *  |  * Write more Workspace Web tests
     Enable smoke gate    *  |  * Fix STATUS_BLOCKED bug
                             |  * Enable Kiwi TCMS
     ────────────────────────┼────────────────────────────
@@ -208,7 +208,7 @@ python -m pytest --smoke-gate --kiwi-create-run -m ${suite} ...
    Gherkin forces a 1:1 step-definition-per-line, creating double maintenance
    (`.feature` file + step definitions) with no added value.
 2. **Mixed test types** — Framework handles UI (pywinauto), console (subprocess),
-   PKCS#11 (Java/Go/C++/GTest). BDD patterns fit UI awkwardly and console tests
+   CLI (Java/Go/C++/GTest). BDD patterns fit UI awkwardly and console tests
    even worse (`When I run pkcs11-tool with args "--list-slots"` is not readable).
 3. **Audience** — Test engineers, not PMs/BAs. Python is more readable for this team
    than Gherkin + step definitions.
@@ -221,11 +221,11 @@ python -m pytest --smoke-gate --kiwi-create-run -m ${suite} ...
 ┌───────────────────────────────────────────────────────────┐
 │  KIWI TCMS — Test Case (Source of Truth for Procedure)    │
 │                                                           │
-│  Summary: [E2E][eAdmin][Connect] Connect to HSM           │
+│  Summary: [E2E][eAdmin][Connect] Connect to Workspace           │
 │  Text:                                                    │
 │    Given eAdmin is launched on Windows client              │
 │    When operator clicks Connect and confirms popup         │
-│    Then dashboard loads and HSM status shows Connected     │
+│    Then dashboard loads and Workspace status shows Connected     │
 │                                                           │
 │  → High-level, business readable, 3-5 lines               │
 │  → Follows oracle rules: objective, deterministic,        │
@@ -268,15 +268,15 @@ python -m pytest --smoke-gate --kiwi-create-run -m ${suite} ...
 TCMS Summary format: `[Test Level][Component][Feature] Test Name`
 
 ```python
-# TCMS: [E2E][PKCS11][Sign] RSA sign + verify using HSM key via Proxy
+# TCMS: [E2E][PKCS11][Sign] RSA sign + verify using Workspace key via Proxy
 
 @allure.suite("E2E")                                    # [Test Level]
 @allure.feature("PKCS11")                               # [Component]
 @allure.story("Sign")                                   # [Feature]
-@allure.title("RSA sign + verify using HSM key via Proxy")
+@allure.title("RSA sign + verify using Workspace key via Proxy")
 @allure.description(
-    "Given HSM is connected and key 'TestRSA' exists\n"
-    "When client sends PKCS#11 C_Sign with RSA-PSS mechanism\n"
+    "Given Workspace is connected and key 'TestRSA' exists\n"
+    "When client sends CLI C_Sign with RSA-PSS mechanism\n"
     "Then signature is returned (non-empty, correct length)\n"
     "And C_Verify with same key returns CKR_OK"
 )
@@ -300,7 +300,7 @@ Use Given/When/Then prefixes in `tracked_step` labels to match TCMS procedure:
 
 ```python
 # Given
-with tracked_step(evidence, driver, "Given: HSM connected, operator logged in"):
+with tracked_step(evidence, driver, "Given: Workspace connected, operator logged in"):
     ...
 
 # When
@@ -354,12 +354,12 @@ assert "Connected" in status, (
 - The framework is production-ready — it's the test suite that needs work
 - Phase 2 (hardening) should be prioritized before onboarding more consumer repos
 - Every feature in Tier 1 is a config change — zero code required
-- Use `inspect_app.py` to discover E-Admin UI elements before writing new tests
+- Use `inspect_app.py` to discover Workspace Web UI elements before writing new tests
 - `tracked_step` is the recommended pattern — avoid raw `StepTracker`
 - TCMS Gherkin is documentation, not executable — keep Python tests native pytest
 
 
-python scripts/inspect_app.py "C:\SPHERE_HSM\Admin Application\AdminApp.exe" --record -r check_flow
+python scripts/inspect_app.py "C:\SPHERE_Workspace\Admin Application\AdminApp.exe" --record -r check_flow
 
 
 Action plan :

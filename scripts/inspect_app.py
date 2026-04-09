@@ -217,7 +217,7 @@ def _write_python_stub(steps, app_name, recorded_ts, yaml_filename, output_path)
         f"# App: {app_name} | Date: {recorded_ts}",
         f"# Flow: {yaml_filename}",
         "",
-        "from sphere_e2e_test_framework import tracked_step",
+        "from ankole import tracked_step",
         "",
         "",
         "def test_recorded_flow(self):",

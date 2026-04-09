@@ -1,19 +1,19 @@
-# Sphere E2E Test Framework — Introduction
+# Ankole Framework — Introduction
 
 ## What Is This?
 
-The Sphere E2E Test Framework is a **pytest-based automation framework** purpose-built
-for end-to-end testing of Sphere HSM (Hardware Security Module) devices and their
+The Ankole Framework is a **pytest-based automation framework** purpose-built
+for end-to-end testing of Ankole (Hardware Security Module) devices and their
 supporting applications.
 
 It automates the full test lifecycle: **launch app → execute steps → capture evidence
-→ report results** — across Windows desktop apps (E-Admin, CPS, Proxy) and
-console/CLI tools (PKCS#11 in Go, Java, C++).
+→ report results** — across Windows desktop apps (Workspace Web, CPS, Proxy) and
+console/CLI tools (CLI in Go, Java, C++).
 
 ### Who Is This For?
 
-- **QA Engineers** writing new UI or console tests for HSM applications
-- **Developers** validating HSM features in CI/CD pipelines
+- **QA Engineers** writing new UI or console tests for Workspace applications
+- **Developers** validating Workspace features in CI/CD pipelines
 - **Team Leads** tracking test coverage and results via Grafana/TCMS dashboards
 
 ---
@@ -24,19 +24,19 @@ console/CLI tools (PKCS#11 in Go, Java, C++).
 
 | Application | Type | Status | Test Location |
 |-------------|------|--------|---------------|
-| **E-Admin** | WinForms desktop app | Active (9 test classes) | `tests/ui/e_admin/` |
+| **Workspace Web** | WinForms desktop app | Active (9 test classes) | `tests/ui/workspace/` |
 | **CPS** | WinForms desktop app | Active (4 test classes) | `tests/ui/cps/` |
 | **Proxy** | WinForms desktop app | Scaffolded (ready to write) | `tests/ui/proxy/` |
-| **PKCS#11 Tools** | CLI (Go, Java, C++, GTest) | Active (6 test classes) | `tests/console/pkcs11/` |
+| **CLI Tools** | CLI (Go, Java, C++, GTest) | Active (6 test classes) | `tests/console/pkcs11/` |
 
-### Test Scenarios (E-Admin)
+### Test Scenarios (Workspace Web)
 
 | Test Case | TCMS ID | What It Tests |
 |-----------|---------|---------------|
 | Key Ceremony (FIPS) | TC-37509 | Full FIPS key ceremony workflow |
 | Key Ceremony (Non-FIPS) | TC-37515 | Non-FIPS key ceremony workflow |
 | Operational User Creation | TC-37516 | Create operational users with roles |
-| HSM Reset by Super User | TC-37517 | HSM reset via super user privileges |
+| Workspace Reset by Super User | TC-37517 | Workspace reset via super user privileges |
 | Delete Operational User | TC-37520 | User deletion and verification |
 | Block User | TC-37522 | Block an operational user |
 | Unblock User | TC-37523 | Unblock a previously blocked user |
@@ -49,7 +49,7 @@ console/CLI tools (PKCS#11 in Go, Java, C++).
 
 ```mermaid
 graph TB
-    subgraph Framework["Sphere E2E Test Framework"]
+    subgraph Framework["Ankole Framework"]
         direction TB
 
         subgraph FlowStep["Flow / Step Orchestration"]
@@ -62,7 +62,7 @@ graph TB
         subgraph POM["Page Object Model"]
             BP["BasePage<br/><i>generic WinForms</i>"]
             EAB["EAdminBasePage<br/><i>sidebar, T&C, logout</i>"]
-            EA["e_admin/<br/>12 page classes"]
+            EA["workspace/<br/>12 page classes"]
             CP["cps/<br/><i>scaffold</i>"]
             PX["proxy/<br/><i>scaffold</i>"]
             BP --> EAB --> EA
@@ -92,16 +92,16 @@ graph TB
     end
 
     subgraph Targets["Systems Under Test"]
-        EADMIN["E-Admin App<br/><i>WinForms on VM</i>"]
+        EADMIN["Workspace Web App<br/><i>WinForms on VM</i>"]
         CPSAPP["CPS App<br/><i>WinForms on VM</i>"]
         PROXYAPP["Proxy App<br/><i>WinForms on VM</i>"]
-        PKCS["PKCS#11 CLI<br/><i>Go / Java / C++</i>"]
-        HSM[("Sphere HSM<br/>Device")]
+        PKCS["CLI CLI<br/><i>Go / Java / C++</i>"]
+        Workspace[("Ankole<br/>Device")]
     end
 
     UI --> EADMIN & CPSAPP & PROXYAPP
     CR --> PKCS
-    EADMIN & CPSAPP & PROXYAPP & PKCS --> HSM
+    EADMIN & CPSAPP & PROXYAPP & PKCS --> Workspace
 
     style Framework fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
     style Core fill:#0f3460,stroke:#533483,color:#e0e0e0
@@ -109,7 +109,7 @@ graph TB
     style Integrations fill:#0f3460,stroke:#533483,color:#e0e0e0
     style Infra fill:#0f3460,stroke:#533483,color:#e0e0e0
     style Targets fill:#1a1a2e,stroke:#e94560,color:#e0e0e0
-    style HSM fill:#e94560,stroke:#e94560,color:#ffffff
+    style Workspace fill:#e94560,stroke:#e94560,color:#ffffff
 ```
 
 ---
@@ -161,7 +161,7 @@ Automates WinForms and WPF desktop applications using pywinauto:
 
 ### 2. Console/CLI Tool Testing
 
-Wraps existing command-line tools (PKCS#11, etc.) without modifying their source code:
+Wraps existing command-line tools (CLI, etc.) without modifying their source code:
 
 - **Subprocess execution** with stdout/stderr capture and timeout
 - **Cross-platform** — separate commands for Windows and Linux
@@ -289,7 +289,7 @@ Each application screen is a Python class that encapsulates UI interactions:
 ```python
 # Fluent navigation — methods return the next page
 login = LoginPage(driver, evidence)
-dashboard = login.connect_to_hsm(step_name="Connect to HSM")
+dashboard = login.connect_to_hsm(step_name="Connect to Workspace")
 dashboard.create_user(username="operator1", step_name="Create user")
 ```
 
@@ -362,13 +362,13 @@ Key patterns:
 - **Fluent return** — each method returns the next page object
 - **Evidence optional** — page objects work with or without evidence tracking
 - **`BasePage`** — generic WinForms helpers (dismiss dialogs, `_step()`)
-- **`EAdminBasePage`** — E-Admin-specific navigation (sidebar, T&C acceptance, logout)
+- **`EAdminBasePage`** — Workspace Web-specific navigation (sidebar, T&C acceptance, logout)
 
 ### 6. Health Checks
 
 Pre-execution verification ensures the test environment is ready before running:
 
-- **Ping check** — HSM device is network-reachable
+- **Ping check** — Workspace device is network-reachable
 - **TCP check** — Required ports are open
 - **Configurable** in `settings.yaml` → `health_check:`
 - **Skip with** `pytest --skip-health-check`
@@ -438,7 +438,7 @@ flowchart LR
 After each test, the framework queries Loki for logs from all configured VMs
 within the test's time range. Logs are saved, zipped, and attached to the Allure report.
 
-Useful for multi-VM scenarios where the HSM, Proxy, and Admin apps run on separate machines.
+Useful for multi-VM scenarios where the Workspace, Proxy, and Admin apps run on separate machines.
 
 ### Remote Agents — Multi-VM Orchestration
 
@@ -456,7 +456,7 @@ The framework uses a layered configuration approach:
 
 ```mermaid
 flowchart TB
-    ENV[".env<br/><i>Secrets</i><br/>HSM_IP, passwords, app paths"]
+    ENV[".env<br/><i>Secrets</i><br/>Workspace_IP, passwords, app paths"]
     YAML["config/settings.yaml<br/><i>Structure</i><br/>App config, health checks,<br/>integrations"]
     TOML["pyproject.toml<br/><i>pytest options</i><br/>Markers, timeouts, Allure"]
 
@@ -475,7 +475,7 @@ All `${ENV_VAR}` placeholders in `settings.yaml` are resolved from `.env` at run
 Additional config mechanisms:
 - **`env_overrides`** — data-driven mapping of env vars to dotted config paths (supports `:int` / `:bool` type hints)
 - **`env_overrides_list`** — list-based overrides for array config entries (e.g. `health_check.checks`)
-- **Config path:** Set `SPHERE_CONFIG_PATH` to override the default config file location (falls back to `HSM_CONFIG_PATH`)
+- **Config path:** Set `SPHERE_CONFIG_PATH` to override the default config file location (falls back to `Workspace_CONFIG_PATH`)
 
 ---
 
@@ -486,12 +486,12 @@ tests/
 ├── test_data.py                           ← Test data dataclasses (KeyCeremonyData, etc.)
 ├── ui/
 │   ├── conftest.py                        ← COM init, dependency hooks, failure screenshots
-│   ├── e_admin/
-│   │   ├── conftest.py                    ← App-specific fixtures (e_admin_driver, etc.)
+│   ├── workspace/
+│   │   ├── conftest.py                    ← App-specific fixtures (workspace_driver, etc.)
 │   │   ├── test_TC-37509_KeyCeremonyFIPS.py
 │   │   ├── test_TC-37515_KeyCeremonyNonFIPS.py
 │   │   ├── test_TC-37516_AddOperationUser.py
-│   │   ├── test_TC-37517_HSMResetBySuperUser.py
+│   │   ├── test_TC-37517_WorkspaceResetBySuperUser.py
 │   │   ├── test_TC-37520_DeleteOperationUser.py
 │   │   ├── test_TC-37522_BlockUser.py
 │   │   ├── test_TC-37523_UnblockUser.py
@@ -502,7 +502,7 @@ tests/
 │   │   ├── test_DP_with_CLI.py
 │   │   ├── test_HL_BasicFct.py
 │   │   ├── test_HL_BasicFct_with_CLI.py
-│   │   └── test_HSM_Init_for_CPS.py
+│   │   └── test_Workspace_Init_for_CPS.py
 │   └── proxy/
 │       └── conftest.py                    ← Scaffolded, ready to write tests
 └── console/
@@ -522,7 +522,7 @@ flowchart TB
     P["plugin/<br/><i>Auto-registered via pytest11</i><br/>config, evidence, console,<br/>log_collector, ui_app"]
     R["conftest.py<br/><i>Root</i>"]
     T["tests/ui/conftest.py<br/><i>COM init, dependency hooks,<br/>failure screenshots</i>"]
-    U["tests/ui/e_admin/conftest.py<br/><i>e_admin_driver, window_monitor,<br/>collect_app_logs (9 tests)</i>"]
+    U["tests/ui/workspace/conftest.py<br/><i>workspace_driver, window_monitor,<br/>collect_app_logs (9 tests)</i>"]
     C["tests/ui/cps/conftest.py<br/><i>cps_driver, window_monitor,<br/>collect_app_logs (4 tests)</i>"]
 
     P --> R --> T
@@ -540,18 +540,18 @@ Each conftest only loads when tests in that directory are selected — no unnece
 
 Tests use one of two patterns — **Flow-based** (preferred for complex workflows) or **Page Object** (for simpler tests):
 
-**Flow-based pattern** (Key Ceremony, CKC, HSM Reset):
+**Flow-based pattern** (Key Ceremony, CKC, Workspace Reset):
 
 ```python
-@allure.epic("Sphere HSM Idemia - E2E Tests - E-Admin")
+@allure.epic("Ankole Idemia - E2E Tests - Workspace Web")
 @allure.feature("Customer Key Ceremony")
-@pytest.mark.e_admin
+@pytest.mark.workspace
 @pytest.mark.flow
 class TestCustomerKeyCeremonyFlow:
 
     @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence):
-        self.driver = e_admin_driver
+    def setup(self, workspace_driver, evidence):
+        self.driver = workspace_driver
         self.evidence = evidence
         self.td = CustomerKeyCeremonyData.from_env()
         yield
@@ -564,21 +564,21 @@ class TestCustomerKeyCeremonyFlow:
 **Page Object pattern** (User management, simpler workflows):
 
 ```python
-@allure.epic("Sphere HSM Idemia - E2E Tests - E-Admin")
+@allure.epic("Ankole Idemia - E2E Tests - Workspace Web")
 @allure.feature("User Management")
-@pytest.mark.e_admin
+@pytest.mark.workspace
 @pytest.mark.tcms(case_id=37516)
 class TestAddOperationUser:
 
     @pytest.fixture(autouse=True)
-    def setup(self, e_admin_driver, evidence):
-        self.driver = e_admin_driver
+    def setup(self, workspace_driver, evidence):
+        self.driver = workspace_driver
         self.evidence = evidence
         yield
 
     def test_add_operation_user(self):
         login = LoginPage(self.driver, self.evidence)
-        dashboard = login.connect_to_hsm(step_name="Connect to HSM")
+        dashboard = login.connect_to_hsm(step_name="Connect to Workspace")
         # ... test steps with evidence tracking
 ```
 
@@ -657,7 +657,7 @@ graph TB
     end
 
     subgraph VM1["VM 1 — Admin"]
-        EA["E-Admin App"]
+        EA["Workspace Web App"]
         AG1["Remote Agent<br/><i>:5050</i>"]
     end
 
@@ -671,7 +671,7 @@ graph TB
     end
 
     subgraph Infra["Infrastructure"]
-        HSM[("Sphere HSM<br/>Device")]
+        Workspace[("Ankole<br/>Device")]
         LOKI["Loki<br/><i>Log aggregation</i>"]
         PROM["Prometheus<br/><i>Metrics</i>"]
     end
@@ -679,14 +679,14 @@ graph TB
     FW -->|"UI automation"| EA
     FW -->|"HTTP commands"| AG1 & AG2
     FW -->|"UI automation"| CS
-    EA & PX & CS -->|"PKCS#11 / API"| HSM
+    EA & PX & CS -->|"CLI / API"| Workspace
 
     VM1 & VM2 -->|"ship logs"| LOKI
     FW -->|"query logs"| LOKI
     FW -->|"push metrics"| PROM
 
     style CI fill:#2d3436,stroke:#636e72,color:#dfe6e9
-    style HSM fill:#e94560,stroke:#e94560,color:#ffffff
+    style Workspace fill:#e94560,stroke:#e94560,color:#ffffff
     style Infra fill:#1a1a2e,stroke:#16213e,color:#e0e0e0
 ```
 
@@ -713,9 +713,9 @@ graph TB
 
 | Command | Description |
 |---------|-------------|
-| `pytest tests/ui/e_admin/ -v` | Run all E-Admin tests |
+| `pytest tests/ui/workspace/ -v` | Run all Workspace Web tests |
 | `pytest -m smoke -v` | Run smoke tests only |
-| `pytest -m "e_admin and critical"` | E-Admin critical tests |
+| `pytest -m "workspace and critical"` | Workspace Web critical tests |
 | `pytest --kiwi-run-id=123` | Sync with TCMS TestRun #123 |
 | `pytest --run-id sprint_42` | Tag run for Grafana |
 | `pytest --smoke-gate` | Abort if smoke fails |
@@ -733,7 +733,7 @@ flowchart LR
     B --> C["Configure<br/>.env"]
     C --> D["Verify<br/>pytest --co -v"]
     D --> E{"What next?"}
-    E -->|"Run existing tests"| F["pytest -m e_admin -v"]
+    E -->|"Run existing tests"| F["pytest -m workspace -v"]
     E -->|"Write new tests"| G["Read COOKBOOK.md"]
     E -->|"Setup CI"| H["Read SETUP_GUIDE.md"]
 
@@ -745,7 +745,7 @@ flowchart LR
 | Step | Action | Guide |
 |------|--------|-------|
 | 1 | Install Python 3.11+, clone repo, run `scripts/setup.bat` | [SETUP_GUIDE.md](../SETUP_GUIDE.md) |
-| 2 | Configure `.env` with HSM_IP, app paths | [SETUP_GUIDE.md](../SETUP_GUIDE.md) |
+| 2 | Configure `.env` with Workspace_IP, app paths | [SETUP_GUIDE.md](../SETUP_GUIDE.md) |
 | 3 | Run existing tests | [README.md](../README.md) |
 | 4 | Write tests for a new app (CPS/Proxy) | [COOKBOOK.md](../COOKBOOK.md) |
 | 5 | Set up Jenkins CI pipeline | [SETUP_GUIDE.md](../SETUP_GUIDE.md) |
@@ -763,12 +763,12 @@ flowchart LR
 | **`_step()` + evidence tracking** | Every action produces Allure steps with screenshots — no manual effort |
 | **TCMS as source of truth** | Test procedures live in Kiwi TCMS (human-readable), automation code lives in Python (machine-executable) |
 | **Flow/Step orchestration** | Complex ceremonies (20+ steps) are composed from reusable step factories. Steps share state via FlowContext, support retry/cleanup, and remain independently testable |
-| **No BDD/Gherkin** | Complex HSM workflows (20-30 steps) don't fit 1:1 step definitions. `tracked_step` provides the same documentation value without the overhead |
-| **Health checks before execution** | Fail fast with clear diagnostics if HSM is unreachable, instead of cryptic timeouts during tests |
-| **Separated conftest per app** | `tests/ui/e_admin/conftest.py` only loads when running E-Admin tests — no unnecessary imports |
+| **No BDD/Gherkin** | Complex Workspace workflows (20-30 steps) don't fit 1:1 step definitions. `tracked_step` provides the same documentation value without the overhead |
+| **Health checks before execution** | Fail fast with clear diagnostics if Workspace is unreachable, instead of cryptic timeouts during tests |
+| **Separated conftest per app** | `tests/ui/workspace/conftest.py` only loads when running Workspace Web tests — no unnecessary imports |
 | **Environment-based config** | `.env` for secrets, `settings.yaml` for structure — safe for version control |
 | **DriverProtocol (duck typing)** | Enables injection of non-pywinauto drivers (Playwright, mock) without modifying core |
-| **EAdminBasePage split** | New apps inherit clean `BasePage` without E-Admin navigation methods |
+| **EAdminBasePage split** | New apps inherit clean `BasePage` without Workspace Web navigation methods |
 | **Export artifacts to JSON** | CKC Generate & Export saves key data to `output/ckc_export.json` for reuse by Import tests — decouples test execution order |
 
 ---
@@ -777,10 +777,10 @@ flowchart LR
 
 | Term | Meaning |
 |------|---------|
-| **E-Admin** | HSM Administration Application (WinForms desktop app) |
+| **Workspace Web** | Workspace Administration Application (WinForms desktop app) |
 | **CPS** | Certificate Provisioning System |
-| **Proxy** | HSM Proxy Application |
-| **PKCS#11** | Cryptographic Token Interface Standard — the API HSMs expose |
+| **Proxy** | Workspace Proxy Application |
+| **CLI** | Cryptographic Token Interface Standard — the API Workspaces expose |
 | **POM** | Page Object Model — design pattern for UI test automation |
 | **TCMS** | Test Case Management System (Kiwi TCMS) |
 | **Evidence** | Screenshots, logs, and attachments collected during test execution |
@@ -788,12 +788,12 @@ flowchart LR
 | **Flow** | Composable sequence of Steps executed via FlowContext — supports retry, cleanup, continue-on-failure |
 | **Step** | Reusable action factory that takes a FlowContext — the building block of Flows |
 | **FlowContext** | Runtime context carrying driver, evidence, test data, and shared state across Steps |
-| **CKC** | Customer Key Ceremony — key generation/export/import workflow in E-Admin |
+| **CKC** | Customer Key Ceremony — key generation/export/import workflow in Workspace Web |
 | **KCP** | Key Custodian Party — user role responsible for key components during CKC |
 | **Smoke Gate** | Mechanism to abort test suite if critical smoke tests fail |
 | **Health Check** | Pre-execution verification that the test environment is ready |
 | **UIDriver** | Framework's pywinauto wrapper with popup handling and retry logic |
 | **ConsoleRunner** | Framework's subprocess wrapper for CLI tool execution |
 | **BasePage** | Generic WinForms base page with `_step()`, `dismiss_ok` — no app-specific methods |
-| **EAdminBasePage** | E-Admin-specific base page with sidebar navigation and T&C acceptance |
+| **EAdminBasePage** | Workspace Web-specific base page with sidebar navigation and T&C acceptance |
 | **DriverProtocol** | Runtime-checkable Protocol defining the driver interface for dependency injection |
