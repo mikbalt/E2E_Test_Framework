@@ -67,6 +67,27 @@ metrics:
     environment: "docker"
     team: "qa"
 
+security:
+  zap:
+    api_url: "http://localhost:8080"
+    api_key: "ankole-zap-key"
+    risk_threshold: "Medium"
+  target_url: "http://workspace-api:8000"
+
+load_testing:
+  locust:
+    users: 20
+    spawn_rate: 5
+    run_time: "60s"
+    target_host: "http://workspace-api:8000"
+  k6:
+    vus: 20
+    duration: "60s"
+    thresholds:
+      http_req_duration_p95: 500
+      http_req_failed_rate: 0.1
+    target_url: "http://workspace-api:8000"
+
 remote_logs:
   enabled: true
   loki_url: "http://localhost:3100"

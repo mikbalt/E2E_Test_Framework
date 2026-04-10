@@ -1,0 +1,216 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Security Testing",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 80 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Security Test Pass Rate",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "ankole_tests_passed{suite=\"security\"} / ankole_tests_total{suite=\"security\"} * 100",
+          "legendFormat": "Pass Rate"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+      "id": 3,
+      "options": {
+        "legend": { "displayMode": "table" },
+        "tooltip": { "mode": "multi" }
+      },
+      "title": "OWASP Test Results",
+      "type": "barchart",
+      "targets": [
+        {
+          "expr": "ankole_owasp_tests_passed",
+          "legendFormat": "{{ category }} passed"
+        },
+        {
+          "expr": "ankole_owasp_tests_failed",
+          "legendFormat": "{{ category }} failed"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "ZAP Alert Summary",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "ankole_zap_alerts_total",
+          "legendFormat": "{{ risk }}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 10,
+      "title": "Locust Load Testing",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "id": 11,
+      "options": {
+        "legend": { "displayMode": "table" },
+        "tooltip": { "mode": "multi" }
+      },
+      "title": "Locust Response Time p95",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "locust_requests_current_response_time_percentile_95",
+          "legendFormat": "{{ name }} p95"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "id": 12,
+      "title": "Locust Request Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "locust_requests_current_rps",
+          "legendFormat": "{{ name }} RPS"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "id": 13,
+      "title": "Locust Error Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "locust_requests_current_fail_per_sec / locust_requests_current_rps",
+          "legendFormat": "Error Rate"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 20,
+      "title": "k6 Load Testing",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "id": 21,
+      "title": "k6 HTTP Request Duration",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "k6_http_req_duration_p95",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "k6_http_req_duration_p90",
+          "legendFormat": "p90"
+        },
+        {
+          "expr": "k6_http_req_duration_avg",
+          "legendFormat": "avg"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "id": 22,
+      "title": "k6 Virtual Users",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "k6_vus",
+          "legendFormat": "Active VUs"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "id": 23,
+      "title": "k6 Checks Pass Rate",
+      "type": "gauge",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "k6_checks_rate",
+          "legendFormat": "Pass Rate"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ankole", "security", "load-testing"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Ankole Framework - Security & Load Testing",
+  "uid": "ankole-security-load",
+  "version": 1
+}

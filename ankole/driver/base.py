@@ -1,9 +1,10 @@
 """Driver protocols — defines interfaces for all automation drivers.
 
-Three protocol families:
-    DriverProtocol     — Desktop UI (pywinauto)
-    WebDriverProtocol  — Web UI (Playwright)
-    APIDriverProtocol  — REST API (httpx)
+Four protocol families:
+    DriverProtocol            — Desktop UI (pywinauto)
+    WebDriverProtocol         — Web UI (Playwright)
+    APIDriverProtocol         — REST API (httpx)
+    SecurityScannerProtocol   — Security scanning (OWASP ZAP)
 
 Usage::
 
@@ -99,3 +100,14 @@ class APIDriverProtocol(Protocol):
     def put(self, path: str, **kwargs: Any) -> Any: ...
     def patch(self, path: str, **kwargs: Any) -> Any: ...
     def delete(self, path: str, **kwargs: Any) -> Any: ...
+
+
+@runtime_checkable
+class SecurityScannerProtocol(Protocol):
+    """Structural interface for security scanning drivers (OWASP ZAP)."""
+
+    def set_target(self, url: str) -> None: ...
+    def run_spider(self, url: str, **kwargs: Any) -> Any: ...
+    def run_passive_scan(self, **kwargs: Any) -> Any: ...
+    def run_active_scan(self, url: str, **kwargs: Any) -> Any: ...
+    def get_alerts(self, **kwargs: Any) -> list[Any]: ...

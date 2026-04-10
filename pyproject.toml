@@ -30,6 +30,10 @@ api = ["httpx>=0.25"]
 remote = ["requests>=2.28,<3"]
 # Grafana/Prometheus metrics
 metrics = ["prometheus-client>=0.20.0,<1"]
+# Security testing (OWASP ZAP + JWT)
+security = ["python-owasp-zap-v2.4>=0.0.21", "PyJWT>=2.8.0"]
+# Load testing (Locust)
+load = ["locust>=2.20", "gevent>=23.0"]
 # All optional dependencies
 all = [
     "pywinauto>=0.6.8",
@@ -37,6 +41,10 @@ all = [
     "httpx>=0.25",
     "prometheus-client>=0.20.0,<1",
     "requests>=2.28,<3",
+    "python-owasp-zap-v2.4>=0.0.21",
+    "PyJWT>=2.8.0",
+    "locust>=2.20",
+    "gevent>=23.0",
 ]
 
 # Auto-register pytest plugin so consumer repos get fixtures/hooks for free
@@ -62,6 +70,10 @@ markers = [
     "order(index): Execution order for pytest-ordering plugin",
     "depends_on(*case_ids): Skip test if any dependency TC did not pass",
     "flow: Flow-based tests (use -m flow to run only flow tests, -m 'not flow' for imperative only)",
+    "security: OWASP security tests",
+    "owasp: OWASP Top 10 vulnerability tests",
+    "load: Load and performance tests",
+    "zap: Tests requiring OWASP ZAP proxy",
 ]
 addopts = [
     "-v",

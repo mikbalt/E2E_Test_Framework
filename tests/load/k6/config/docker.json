@@ -1,0 +1,7 @@
+{
+  "base_url": "http://workspace-api:8000",
+  "vus": 20,
+  "duration": "60s",
+  "admin_user": "admin",
+  "admin_pass": "admin123"
+}
