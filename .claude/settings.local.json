@@ -13,7 +13,8 @@
       "Bash(mkdir:*)",
       "Bash(do touch:*)",
       "Bash(sed:*)",
-      "Bash(mv Jenkinsfile:*)"
+      "Bash(mv Jenkinsfile:*)",
+      "Bash(ruff check:*)"
     ]
   }
 }

@@ -5,6 +5,12 @@ on:
     branches: [main, feat/*]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_load_tests:
+        description: "Run load tests"
+        type: boolean
+        default: false
 
 env:
   PYTHON_VERSION: "3.11"
@@ -110,11 +116,122 @@ jobs:
           name: allure-results-desktop
           path: evidence/allure-results/
 
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankole
+          POSTGRES_PASSWORD: ankole
+          POSTGRES_DB: ankole
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Setup database
+        run: psql -h localhost -U ankole -d ankole -f sample_apps/db/init.sql
+        env:
+          PGPASSWORD: ankole
+      - name: Start sample API
+        run: |
+          pip install -r sample_apps/api/requirements.txt
+          cd sample_apps/api && DATABASE_URL=postgresql://ankole:ankole@localhost:5432/ankole uvicorn sample_apps.api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+        env:
+          DATABASE_URL: postgresql://ankole:ankole@localhost:5432/ankole
+      - name: Install framework
+        run: pip install -e ".[all]"
+      - name: Run security tests
+        run: pytest tests/security/ -v -m "security and not zap" --alluredir=evidence/allure-results
+        env:
+          WORKSPACE_API_URL: http://localhost:8000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-security
+          path: evidence/allure-results/
+
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[load-test]')
+    needs: integration-tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ankole
+          POSTGRES_PASSWORD: ankole
+          POSTGRES_DB: ankole
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Setup database
+        run: psql -h localhost -U ankole -d ankole -f sample_apps/db/init.sql
+        env:
+          PGPASSWORD: ankole
+      - name: Start sample API
+        run: |
+          pip install -r sample_apps/api/requirements.txt
+          cd sample_apps/api && DATABASE_URL=postgresql://ankole:ankole@localhost:5432/ankole uvicorn sample_apps.api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+        env:
+          DATABASE_URL: postgresql://ankole:ankole@localhost:5432/ankole
+      - name: Install framework + load deps
+        run: pip install -e ".[all]"
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Run Locust tests
+        run: pytest tests/load/locust/ -v -m load --alluredir=evidence/allure-results
+        env:
+          WORKSPACE_API_URL: http://localhost:8000
+          LOCUST_USERS: "5"
+          LOCUST_SPAWN_RATE: "2"
+          LOCUST_RUN_TIME: "10s"
+      - name: Run k6 tests
+        run: pytest tests/load/k6/ -v -m load --alluredir=evidence/allure-results
+        env:
+          WORKSPACE_API_URL: http://localhost:8000
+          K6_VUS: "5"
+          K6_DURATION: "10s"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-load
+          path: evidence/allure-results/
+
   allure-report:
     name: Allure Report
     runs-on: ubuntu-latest
     if: always()
-    needs: [unit-tests, integration-tests, desktop-tests]
+    needs: [unit-tests, integration-tests, desktop-tests, security-tests, load-tests]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

@@ -98,6 +98,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:
       - ./config/grafana-dashboard.json:/var/lib/grafana/dashboards/ankole.json
+      - ./config/grafana-security-load-dashboard.json:/var/lib/grafana/dashboards/security-load.json
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
@@ -145,6 +146,77 @@ services:
       - kiwi-data:/Kiwi/uploads
     profiles:
       - tcms
+
+  # ==========================================================================
+  # Security Testing
+  # ==========================================================================
+
+  zap:
+    image: zaproxy/zaproxy:stable
+    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.key=ankole-zap-key
+    ports:
+      - "8080:8080"
+    depends_on:
+      workspace-api:
+        condition: service_healthy
+    profiles:
+      - security
+
+  # ==========================================================================
+  # Load Testing
+  # ==========================================================================
+
+  locust:
+    image: locustio/locust
+    ports:
+      - "8089:8089"
+      - "9646:9646"
+    volumes:
+      - ./tests/load/locust:/mnt/locust
+    command: -f /mnt/locust/locustfile_full.py --master -H http://workspace-api:8000
+    environment:
+      TARGET_HOST: http://workspace-api:8000
+      ADMIN_USER: admin
+      ADMIN_PASS: admin123
+    depends_on:
+      workspace-api:
+        condition: service_healthy
+    profiles:
+      - load
+
+  locust-worker:
+    image: locustio/locust
+    volumes:
+      - ./tests/load/locust:/mnt/locust
+    command: -f /mnt/locust/locustfile_full.py --worker --master-host locust
+    environment:
+      TARGET_HOST: http://workspace-api:8000
+      ADMIN_USER: admin
+      ADMIN_PASS: admin123
+    depends_on:
+      - locust
+    deploy:
+      replicas: 2
+    profiles:
+      - load
+
+  k6:
+    image: grafana/k6
+    volumes:
+      - ./tests/load/k6/scripts:/scripts
+    environment:
+      TARGET_URL: http://workspace-api:8000
+      ADMIN_USER: admin
+      ADMIN_PASS: admin123
+      K6_VUS: "20"
+      K6_DURATION: "60s"
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+    entrypoint: ["k6", "run", "/scripts/full_scenario.js"]
+    depends_on:
+      workspace-api:
+        condition: service_healthy
+    profiles:
+      - load
 
 volumes:
   pgdata:

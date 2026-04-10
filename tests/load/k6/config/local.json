@@ -1,0 +1,7 @@
+{
+  "base_url": "http://localhost:8000",
+  "vus": 10,
+  "duration": "30s",
+  "admin_user": "admin",
+  "admin_pass": "admin123"
+}

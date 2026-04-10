@@ -84,6 +84,29 @@ metrics:
     environment: "docker"
     team: "qa"
 
+# --- Security Testing (OWASP ZAP) ---
+security:
+  zap:
+    api_url: "${ZAP_API_URL}"
+    api_key: "${ZAP_API_KEY}"
+    risk_threshold: "Medium"
+  target_url: "${WORKSPACE_API_URL}"
+
+# --- Load Testing ---
+load_testing:
+  locust:
+    users: 10
+    spawn_rate: 2
+    run_time: "30s"
+    target_host: "${WORKSPACE_API_URL}"
+  k6:
+    vus: 10
+    duration: "30s"
+    thresholds:
+      http_req_duration_p95: 500
+      http_req_failed_rate: 0.1
+    target_url: "${WORKSPACE_API_URL}"
+
 # --- Remote Logs (Loki) ---
 remote_logs:
   enabled: false

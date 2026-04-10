@@ -105,6 +105,10 @@ def pytest_configure(config):
         "markers",
         "order(index): Execution order hint (pytest-ordering)",
     )
+    config.addinivalue_line("markers", "security: OWASP security tests")
+    config.addinivalue_line("markers", "owasp: OWASP Top 10 vulnerability tests")
+    config.addinivalue_line("markers", "load: Load and performance tests")
+    config.addinivalue_line("markers", "zap: Tests requiring OWASP ZAP proxy")
 
     # --- Evidence directories ---
     cfg = load_config()
