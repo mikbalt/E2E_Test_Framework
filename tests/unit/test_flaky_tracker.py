@@ -78,16 +78,16 @@ class TestFlakyTracker:
         assert "stable_one" not in flaky_ids
 
     def test_window_size_trimming(self, tmp_path):
-        """History is trimmed to window_size."""
+        """History is trimmed to window_size after multiple runs."""
         history_path = str(tmp_path / "flaky.json")
-        tracker = FlakyTracker(
-            history_path=history_path, window_size=3,
-        )
 
+        # Simulate 5 separate runs, each recording one result
         for passed in [True, True, True, False, False]:
+            tracker = FlakyTracker(
+                history_path=history_path, window_size=3,
+            )
             tracker.record("test_trim", passed=passed)
-
-        tracker.finalize()
+            tracker.finalize()
 
         with open(history_path) as f:
             data = json.load(f)
