@@ -62,6 +62,98 @@ class APIResponse:
         )
         return self
 
+    def assert_schema(self, model_class: Any) -> "APIResponse":
+        """Validate response JSON against a Pydantic v2 model.
+
+        Args:
+            model_class: Pydantic BaseModel subclass.
+
+        Returns:
+            self for chaining.
+
+        Raises:
+            AssertionError: If validation fails.
+        """
+        data = self.json()
+        try:
+            model_class.model_validate(data)
+        except Exception as e:
+            raise AssertionError(
+                f"Schema validation failed for {model_class.__name__}: {e}"
+            ) from e
+        return self
+
+    def assert_json_schema(self, schema: dict) -> "APIResponse":
+        """Validate response JSON against a JSON Schema dict.
+
+        Args:
+            schema: JSON Schema dictionary.
+
+        Returns:
+            self for chaining.
+        """
+        import jsonschema
+
+        data = self.json()
+        try:
+            jsonschema.validate(instance=data, schema=schema)
+        except jsonschema.ValidationError as e:
+            raise AssertionError(
+                f"JSON Schema validation failed: {e.message}"
+            ) from e
+        return self
+
+    def assert_matches_openapi(self, spec_path: str, operation_id: str) -> "APIResponse":
+        """Validate response against an OpenAPI specification.
+
+        Loads the OpenAPI spec, finds the operation by ID, extracts the
+        response schema for the current status code, and validates.
+
+        Args:
+            spec_path: Path to OpenAPI spec file (YAML or JSON).
+            operation_id: Operation ID to match.
+
+        Returns:
+            self for chaining.
+        """
+        import json as json_mod
+        import yaml
+        import jsonschema
+
+        with open(spec_path, "r") as f:
+            if spec_path.endswith(".json"):
+                spec = json_mod.load(f)
+            else:
+                spec = yaml.safe_load(f)
+
+        # Find operation by operationId
+        response_schema = None
+        for path_obj in spec.get("paths", {}).values():
+            for method_obj in path_obj.values():
+                if isinstance(method_obj, dict) and method_obj.get("operationId") == operation_id:
+                    status_str = str(self.status_code)
+                    resp_def = method_obj.get("responses", {}).get(status_str, {})
+                    content = resp_def.get("content", {})
+                    json_content = content.get("application/json", {})
+                    response_schema = json_content.get("schema")
+                    break
+            if response_schema:
+                break
+
+        if response_schema is None:
+            raise AssertionError(
+                f"No schema found for operation '{operation_id}' "
+                f"with status {self.status_code} in {spec_path}"
+            )
+
+        try:
+            jsonschema.validate(instance=self.json(), schema=response_schema)
+        except jsonschema.ValidationError as e:
+            raise AssertionError(
+                f"OpenAPI validation failed for '{operation_id}': {e.message}"
+            ) from e
+        return self
+
 
 class APIDriver:
     """HTTP client wrapper with JWT token management.

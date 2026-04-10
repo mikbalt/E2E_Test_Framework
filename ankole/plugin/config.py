@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import threading
 
 import yaml
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _CONFIG_CACHE = None
+_CONFIG_LOCK = threading.Lock()
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
 
@@ -23,32 +25,40 @@ def load_config(config_path=None):
     Searches: config/settings.yaml (relative to cwd), then env
     ANKOLE_CONFIG_PATH.
     After loading, applies environment variable overrides (see _apply_env_overrides).
+
+    Thread-safe: uses a lock to prevent race conditions when multiple
+    pytest-xdist workers load config simultaneously.
     """
     global _CONFIG_CACHE
     if _CONFIG_CACHE is not None:
         return _CONFIG_CACHE
 
-    search_paths = [
-        config_path,
-        os.environ.get("ANKOLE_CONFIG_PATH"),
-        os.path.join(os.getcwd(), "config", "settings.yaml"),
-        os.path.join(os.getcwd(), "settings.yaml"),
-    ]
+    with _CONFIG_LOCK:
+        # Double-check after acquiring lock
+        if _CONFIG_CACHE is not None:
+            return _CONFIG_CACHE
 
-    for path in search_paths:
-        if path and os.path.exists(path):
-            with open(path, "r") as f:
-                _CONFIG_CACHE = yaml.safe_load(f) or {}
-                logger.info(f"Config loaded from: {path}")
-                _CONFIG_CACHE = _resolve_placeholders(_CONFIG_CACHE)
-                _apply_env_overrides(_CONFIG_CACHE)
-                _validate_config(_CONFIG_CACHE)
-                return _CONFIG_CACHE
+        search_paths = [
+            config_path,
+            os.environ.get("ANKOLE_CONFIG_PATH"),
+            os.path.join(os.getcwd(), "config", "settings.yaml"),
+            os.path.join(os.getcwd(), "settings.yaml"),
+        ]
 
-    logger.warning("No settings.yaml found, using defaults")
-    _CONFIG_CACHE = {}
-    _apply_env_overrides(_CONFIG_CACHE)
-    return _CONFIG_CACHE
+        for path in search_paths:
+            if path and os.path.exists(path):
+                with open(path, "r") as f:
+                    _CONFIG_CACHE = yaml.safe_load(f) or {}
+                    logger.info(f"Config loaded from: {path}")
+                    _CONFIG_CACHE = _resolve_placeholders(_CONFIG_CACHE)
+                    _apply_env_overrides(_CONFIG_CACHE)
+                    _validate_config(_CONFIG_CACHE)
+                    return _CONFIG_CACHE
+
+        logger.warning("No settings.yaml found, using defaults")
+        _CONFIG_CACHE = {}
+        _apply_env_overrides(_CONFIG_CACHE)
+        return _CONFIG_CACHE
 
 
 def _validate_config(cfg):

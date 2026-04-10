@@ -29,10 +29,13 @@ class Evidence:
     """Manages test evidence collection: screenshots, logs, recordings."""
 
     def __init__(self, test_name, base_dir="evidence"):
+        from ankole.testing.parallel import worker_safe_evidence_dir
+
         self.test_name = test_name
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_base = worker_safe_evidence_dir(base_dir)
         self.evidence_dir = os.path.join(
-            base_dir, f"{self.test_name}_{self.timestamp}"
+            safe_base, f"{self.test_name}_{self.timestamp}"
         )
         os.makedirs(self.evidence_dir, exist_ok=True)
 

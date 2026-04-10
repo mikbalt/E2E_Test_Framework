@@ -1,0 +1,39 @@
+# Lightweight Docker stack for Ankole Playground exercises
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ankole
+      POSTGRES_PASSWORD: ankole
+      POSTGRES_DB: ankole
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../../sample_apps/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ankole"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: ../../sample_apps/api
+    environment:
+      DATABASE_URL: postgresql://ankole:ankole@db:5432/ankole
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ../../sample_apps/web_app
+    environment:
+      DATABASE_URL: postgresql://ankole:ankole@db:5432/ankole
+      API_URL: http://api:8000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - api

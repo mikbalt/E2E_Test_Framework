@@ -32,6 +32,7 @@ class WebDriver:
         viewport: dict | None = None,
         base_url: str | None = None,
         evidence_dir: str = "evidence/screenshots",
+        device_name: str | None = None,
     ):
         self.browser_type = browser_type
         self.headless = headless
@@ -40,6 +41,7 @@ class WebDriver:
         self.viewport = viewport or {"width": 1280, "height": 720}
         self.base_url = base_url
         self.evidence_dir = evidence_dir
+        self.device_name = device_name
 
         self._playwright = None
         self._browser = None
@@ -62,10 +64,19 @@ class WebDriver:
             headless=self.headless,
             slow_mo=self.slow_mo,
         )
-        self._context = self._browser.new_context(
-            viewport=self.viewport,
-            base_url=self.base_url,
-        )
+
+        # Device emulation support
+        context_kwargs = {
+            "viewport": self.viewport,
+            "base_url": self.base_url,
+        }
+        if self.device_name:
+            device = self._playwright.devices.get(self.device_name)
+            if device:
+                context_kwargs.update(device)
+                logger.info(f"Emulating device: {self.device_name}")
+
+        self._context = self._browser.new_context(**context_kwargs)
         self._context.set_default_timeout(self.timeout)
         self._page = self._context.new_page()
 

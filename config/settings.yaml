@@ -18,15 +18,22 @@ workspace:
   web:
     base_url: "${WORKSPACE_WEB_URL}"
     browser: "chromium"
+    browsers: ["chromium"]
     headless: true
     slow_mo: 0
     timeout: 30000
     viewport:
       width: 1280
       height: 720
+    device_emulation:
+      enabled: false
+      device_name: "iPhone 13"
   api:
     base_url: "${WORKSPACE_API_URL}"
     timeout: 30
+  database:
+    dsn: "${DATABASE_URL}"
+    autorollback: true
   cli:
     command: "ankole-cli"
     api_url: "${WORKSPACE_API_URL}"
@@ -119,3 +126,22 @@ remote_logs:
       query: '{job="workspace_web"}'
     - label: "workspace_api"
       query: '{job="workspace_api"}'
+
+# --- Visual Regression Testing ---
+visual_regression:
+  baseline_dir: "baselines"
+  actual_dir: "evidence/visual/actual"
+  diff_dir: "evidence/visual/diff"
+  threshold: 0.01
+
+# --- Accessibility Testing ---
+accessibility:
+  tags: ["wcag2a", "wcag2aa"]
+  disabled_rules: []
+
+# --- Flaky Test Detection ---
+flaky_detection:
+  enabled: false
+  history_path: "evidence/flaky_history.json"
+  window_size: 10
+  flip_threshold: 2

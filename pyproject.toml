@@ -34,6 +34,18 @@ metrics = ["prometheus-client>=0.20.0,<1"]
 security = ["python-owasp-zap-v2.4>=0.0.21", "PyJWT>=2.8.0"]
 # Load testing (Locust)
 load = ["locust>=2.20", "gevent>=23.0"]
+# Test data factories (Faker-powered)
+factory = ["factory-boy>=3.3.0", "Faker>=22.0"]
+# Database testing (PostgreSQL)
+db = ["psycopg2-binary>=2.9"]
+# API schema validation
+schema = ["pydantic>=2.0", "jsonschema>=4.20"]
+# Visual regression testing
+visual = ["pixelmatch>=0.3.0"]
+# API mocking
+mock = ["respx>=0.21"]
+# Parallel execution
+parallel = ["pytest-xdist>=3.5"]
 # All optional dependencies
 all = [
     "pywinauto>=0.6.8",
@@ -45,6 +57,14 @@ all = [
     "PyJWT>=2.8.0",
     "locust>=2.20",
     "gevent>=23.0",
+    "factory-boy>=3.3.0",
+    "Faker>=22.0",
+    "psycopg2-binary>=2.9",
+    "pydantic>=2.0",
+    "jsonschema>=4.20",
+    "pixelmatch>=0.3.0",
+    "respx>=0.21",
+    "pytest-xdist>=3.5",
 ]
 
 # Auto-register pytest plugin so consumer repos get fixtures/hooks for free
@@ -74,6 +94,9 @@ markers = [
     "owasp: OWASP Top 10 vulnerability tests",
     "load: Load and performance tests",
     "zap: Tests requiring OWASP ZAP proxy",
+    "a11y: Accessibility tests (axe-core)",
+    "visual: Visual regression tests",
+    "quarantine: Flaky tests quarantined from CI (skipped by default)",
 ]
 addopts = [
     "-v",

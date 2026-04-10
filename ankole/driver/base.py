@@ -1,14 +1,16 @@
 """Driver protocols — defines interfaces for all automation drivers.
 
-Four protocol families:
+Five protocol families:
     DriverProtocol            — Desktop UI (pywinauto)
     WebDriverProtocol         — Web UI (Playwright)
     APIDriverProtocol         — REST API (httpx)
+    DBDriverProtocol          — Database (psycopg2)
     SecurityScannerProtocol   — Security scanning (OWASP ZAP)
 
 Usage::
 
     from ankole.driver.base import DriverProtocol, WebDriverProtocol, APIDriverProtocol
+    from ankole.driver.base import DBDriverProtocol
 
     def my_helper(driver: WebDriverProtocol) -> None:
         driver.goto("https://example.com")
@@ -100,6 +102,22 @@ class APIDriverProtocol(Protocol):
     def put(self, path: str, **kwargs: Any) -> Any: ...
     def patch(self, path: str, **kwargs: Any) -> Any: ...
     def delete(self, path: str, **kwargs: Any) -> Any: ...
+
+
+@runtime_checkable
+class DBDriverProtocol(Protocol):
+    """Structural interface for database drivers (psycopg2)."""
+
+    def connect(self) -> "DBDriverProtocol": ...
+    def close(self) -> None: ...
+    def execute(self, query: str, params: tuple | None = None) -> Any: ...
+    def execute_scalar(self, query: str, params: tuple | None = None) -> Any: ...
+    def row_count(self, table: str, where: dict[str, Any] | None = None) -> int: ...
+    def assert_row_exists(self, table: str, where: dict[str, Any]) -> Any: ...
+    def assert_row_count(self, table: str, expected: int,
+                         where: dict[str, Any] | None = None) -> Any: ...
+    def assert_column_value(self, table: str, column: str, expected: Any,
+                            where: dict[str, Any] | None = None) -> Any: ...
 
 
 @runtime_checkable

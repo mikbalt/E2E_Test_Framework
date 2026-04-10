@@ -109,6 +109,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "owasp: OWASP Top 10 vulnerability tests")
     config.addinivalue_line("markers", "load: Load and performance tests")
     config.addinivalue_line("markers", "zap: Tests requiring OWASP ZAP proxy")
+    config.addinivalue_line("markers", "a11y: Accessibility tests (axe-core)")
+    config.addinivalue_line("markers", "visual: Visual regression tests")
+    config.addinivalue_line("markers", "quarantine: Flaky tests quarantined from CI (skipped by default)")
 
     # --- Evidence directories ---
     cfg = load_config()
@@ -116,6 +119,18 @@ def pytest_configure(config):
     os.makedirs(evidence_dir, exist_ok=True)
     os.makedirs(os.path.join(evidence_dir, "allure-results"), exist_ok=True)
     os.makedirs(os.path.join(evidence_dir, "screenshots"), exist_ok=True)
+
+    # --- Flaky Tracker ---
+    config._flaky_tracker = None
+    flaky_cfg = cfg.get("flaky_detection", {})
+    if flaky_cfg.get("enabled", False):
+        from ankole.plugin.flaky_tracker import FlakyTracker
+        config._flaky_tracker = FlakyTracker(
+            history_path=flaky_cfg.get("history_path", "evidence/flaky_history.json"),
+            window_size=flaky_cfg.get("window_size", 10),
+            flip_threshold=flaky_cfg.get("flip_threshold", 2),
+        )
+        logger.info("Flaky test detection enabled")
 
     # --- Smoke Gate ---
     config._smoke_gate = None
@@ -168,6 +183,12 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "desktop" in item.keywords:
                 item.add_marker(skip_desktop)
+
+    # --- Quarantine: skip flaky/quarantined tests ---
+    skip_quarantine = pytest.mark.skip(reason="Quarantined: flaky test")
+    for item in items:
+        if "quarantine" in item.keywords:
+            item.add_marker(skip_quarantine)
 
     # --- Kiwi bidirectional: filter to only TestRun cases ---
     kiwi_cases = getattr(config, "_kiwi_run_cases", None)
@@ -294,6 +315,11 @@ def pytest_runtest_makereport(item, call):
             if is_smoke_test(item):
                 smoke_gate.record_smoke_result(item.nodeid, report.passed)
 
+        # Flaky tracker recording
+        flaky_tracker = getattr(item.config, "_flaky_tracker", None)
+        if flaky_tracker and is_call:
+            flaky_tracker.record(item.nodeid, report.passed)
+
         cfg = load_config()
         if report.failed and cfg.get("evidence", {}).get("screenshot_on_failure", True):
             _capture_failure_screenshot(item, cfg)
@@ -367,6 +393,11 @@ def pytest_sessionfinish(session, exitstatus):
     plan_id_override = session.config.getoption("--kiwi-plan-id", default=None)
     if plan_id_override:
         cfg.setdefault("kiwi_tcms", {})["plan_id"] = plan_id_override
+
+    # Flaky tracker finalize
+    flaky_tracker = getattr(session.config, "_flaky_tracker", None)
+    if flaky_tracker:
+        flaky_tracker.finalize()
 
     _push_to_kiwi(results, cfg, config=session.config)
     _push_metrics(results, duration, cfg, config=session.config)
