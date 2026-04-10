@@ -1,0 +1,6 @@
+include LICENSE
+include README.md
+include COOKBOOK.md
+include SETUP_GUIDE.md
+recursive-include ankole *.py *.yaml *.yml
+recursive-include config *.yaml *.yml *.json

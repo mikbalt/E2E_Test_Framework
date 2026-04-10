@@ -6,7 +6,30 @@ build-backend = "setuptools.build_meta"
 name = "ankole-framework"
 version = "2.0.0"
 description = "Multi-driver E2E test framework: Playwright, pywinauto, httpx, subprocess — with full observability stack"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    {name = "mikbalt"},
+]
+keywords = [
+    "testing", "e2e", "automation", "playwright", "pywinauto",
+    "httpx", "pytest", "framework", "qa", "end-to-end",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Pytest",
+    "Intended Audience :: Developers",
+
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
 dependencies = [
     "pytest>=7.4.0,<9",
     "pytest-ordering>=0.6",
@@ -18,6 +41,11 @@ dependencies = [
     "python-dotenv>=1.0.0,<2",
     "tcms-api>=12.0,<14",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mikbalt/E2E_Test_Framework"
+Repository = "https://github.com/mikbalt/E2E_Test_Framework"
+Issues = "https://github.com/mikbalt/E2E_Test_Framework/issues"
 
 [project.optional-dependencies]
 # Windows-only: UI automation
