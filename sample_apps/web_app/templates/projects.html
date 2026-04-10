@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Projects - Ankole Framework{% endblock %}
+{% block page_header %}<strong>Projects</strong>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">All Projects</h5>
+    <a href="{{ url_for('project_create') }}" class="btn btn-primary" id="create-project-btn">
+        <i class="bi bi-folder-plus"></i> Create Project
+    </a>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="projects-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Created By</th>
+                        <th>Approvals</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in projects %}
+                    <tr id="project-row-{{ project.id }}">
+                        <td>{{ project.id }}</td>
+                        <td>
+                            <a href="{{ url_for('project_detail', project_id=project.id) }}"
+                               id="project-link-{{ project.id }}">
+                                <strong>{{ project.name }}</strong>
+                            </a>
+                        </td>
+                        <td>
+                            {% if project.status == 'draft' %}
+                            <span class="badge bg-secondary" id="project-status-{{ project.id }}">Draft</span>
+                            {% elif project.status == 'pending_approval' %}
+                            <span class="badge bg-warning text-dark" id="project-status-{{ project.id }}">Pending Approval</span>
+                            {% elif project.status == 'approved' %}
+                            <span class="badge bg-success" id="project-status-{{ project.id }}">Approved</span>
+                            {% elif project.status == 'rejected' %}
+                            <span class="badge bg-danger" id="project-status-{{ project.id }}">Rejected</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ project.creator.username }}</td>
+                        <td>
+                            <span class="text-success">{{ project.approved_count }}</span> /
+                            {{ project.required_approvals }}
+                            {% if project.rejected_count > 0 %}
+                            <span class="text-danger ms-1">({{ project.rejected_count }} rejected)</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ project.created_at.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('project_detail', project_id=project.id) }}"
+                                   class="btn btn-outline-primary"
+                                   id="view-project-{{ project.id }}"
+                                   title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if (project.created_by == current_user.id or current_user.is_admin) %}
+                                <form method="POST" action="{{ url_for('project_delete', project_id=project.id) }}" class="d-inline">
+                                    <button type="submit"
+                                            class="btn btn-outline-danger"
+                                            id="delete-project-{{ project.id }}"
+                                            title="Delete"
+                                            onclick="return confirm('Delete project {{ project.name }}?')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if projects|length == 0 %}
+<div class="text-center text-muted mt-4">
+    <i class="bi bi-folder2-open fs-1"></i>
+    <p class="mt-2">No projects found. Create your first project!</p>
+</div>
+{% endif %}
+{% endblock %}

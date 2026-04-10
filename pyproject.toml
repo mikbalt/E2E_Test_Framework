@@ -3,10 +3,10 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sphere-e2e-test-framework"
-version = "1.2.0"
-description = "Reusable E2E test framework for Windows apps and console tools (PKCS#11, HSM)"
-requires-python = ">=3.9"
+name = "ankole-framework"
+version = "2.0.0"
+description = "Multi-driver E2E test framework: Playwright, pywinauto, httpx, subprocess — with full observability stack"
+requires-python = ">=3.10"
 dependencies = [
     "pytest>=7.4.0,<9",
     "pytest-ordering>=0.6",
@@ -21,7 +21,11 @@ dependencies = [
 
 [project.optional-dependencies]
 # Windows-only: UI automation
-ui = ["pywinauto>=0.6.8"]
+desktop = ["pywinauto>=0.6.8"]
+# Web UI automation (Playwright)
+web = ["playwright>=1.40"]
+# API testing
+api = ["httpx>=0.25"]
 # Remote agent / Loki log collection
 remote = ["requests>=2.28,<3"]
 # Grafana/Prometheus metrics
@@ -29,36 +33,34 @@ metrics = ["prometheus-client>=0.20.0,<1"]
 # All optional dependencies
 all = [
     "pywinauto>=0.6.8",
+    "playwright>=1.40",
+    "httpx>=0.25",
     "prometheus-client>=0.20.0,<1",
     "requests>=2.28,<3",
 ]
 
 # Auto-register pytest plugin so consumer repos get fixtures/hooks for free
 [project.entry-points.pytest11]
-sphere_e2e_test_framework = "sphere_e2e_test_framework.plugin"
+ankole = "ankole.plugin"
 
 [tool.setuptools.packages.find]
-include = ["sphere_e2e_test_framework*"]
+include = ["ankole*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "apps: Application that used in testing purpose",
-    "ui: Windows UI automation tests",
-    "console: Console/CLI based tests",
-    "cps: CPS related tests",
-    "pkcs11: PKCS#11 related tests",
+    "web: Web UI automation tests (Playwright)",
+    "api: REST API tests (httpx)",
+    "cli: CLI tool tests (subprocess)",
+    "desktop: Windows desktop UI automation tests (pywinauto)",
     "smoke: Quick smoke tests",
     "regression: Full regression tests",
     "critical: Critical path tests that must pass",
-    "e_admin: E-Admin application specific tests",
-    "cps: CPS application specific tests",
-    "proxy: Proxy application specific tests",
     "slow: Tests that take longer than 30 seconds",
     "tcms(case_id): Map this test to a specific Kiwi TCMS TestCase ID",
     "order(index): Execution order for pytest-ordering plugin",
     "depends_on(*case_ids): Skip test if any dependency TC did not pass",
-    "cpp: C/C++ based tests (PKCS#11 native tooling)",
     "flow: Flow-based tests (use -m flow to run only flow tests, -m 'not flow' for imperative only)",
 ]
 addopts = [
@@ -77,3 +79,10 @@ timeout_method = "thread"
 filterwarnings = [
     "ignore:Revert to STA COM threading mode:UserWarning",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]

@@ -6,7 +6,14 @@
       "Bash(find C:\\\\Users\\\\Admin\\\\Documents\\\\HSM_Test\\\\REPOSITORY E2E\\\\e2e_test_framework\\\\tests\\\\ui\\\\e_admin:*)",
       "Bash(ls:*)",
       "Bash(pip:*)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(mv sphere_e2e_test_framework:*)",
+      "Bash(find .:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(do touch:*)",
+      "Bash(sed:*)",
+      "Bash(mv Jenkinsfile:*)"
     ]
   }
 }

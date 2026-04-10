@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} - Ankole Framework{% endblock %}
+{% block page_header %}<strong>Project Detail</strong>{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{{ url_for('projects') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Back to Projects
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Project Info -->
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0" id="project-name">{{ project.name }}</h5>
+                {% if project.status == 'draft' %}
+                <span class="badge bg-secondary fs-6" id="project-status">Draft</span>
+                {% elif project.status == 'pending_approval' %}
+                <span class="badge bg-warning text-dark fs-6" id="project-status">Pending Approval</span>
+                {% elif project.status == 'approved' %}
+                <span class="badge bg-success fs-6" id="project-status">Approved</span>
+                {% elif project.status == 'rejected' %}
+                <span class="badge bg-danger fs-6" id="project-status">Rejected</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Description</dt>
+                    <dd class="col-sm-9" id="project-description">{{ project.description or 'No description provided.' }}</dd>
+
+                    <dt class="col-sm-3">Created By</dt>
+                    <dd class="col-sm-9">{{ project.creator.username }}</dd>
+
+                    <dt class="col-sm-3">Required Approvals</dt>
+                    <dd class="col-sm-9">{{ project.required_approvals }}</dd>
+
+                    <dt class="col-sm-3">Created</dt>
+                    <dd class="col-sm-9">{{ project.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+
+                    <dt class="col-sm-3">Last Updated</dt>
+                    <dd class="col-sm-9">{{ project.updated_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+                </dl>
+            </div>
+            {% if project.status == 'draft' and (project.created_by == current_user.id or current_user.is_admin) %}
+            <div class="card-footer">
+                <form method="POST" action="{{ url_for('project_submit', project_id=project.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-success" id="submit-for-approval-btn"
+                            onclick="return confirm('Submit this project for approval?')">
+                        <i class="bi bi-send"></i> Submit for Approval
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Approval Progress -->
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-check2-square"></i> Approval Progress</h6>
+            </div>
+            <div class="card-body">
+                {% if approval_steps %}
+                <div class="mb-3">
+                    <div class="progress" style="height: 24px;">
+                        {% set approved = project.approved_count %}
+                        {% set total = project.required_approvals %}
+                        {% set pct = (approved / total * 100)|int if total > 0 else 0 %}
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: {{ pct }}%"
+                             id="approval-progress">
+                            {{ approved }} / {{ total }}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0" id="no-approvals-msg">
+                    {% if project.status == 'draft' %}
+                    Project has not been submitted for approval yet.
+                    {% else %}
+                    No approval steps configured.
+                    {% endif %}
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Steps -->
+{% if approval_steps %}
+<div class="card shadow-sm mt-4">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-list-check"></i> Approval Steps</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="approval-steps-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Step</th>
+                        <th>Approver</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for step in approval_steps %}
+                    <tr id="approval-step-{{ step.id }}">
+                        <td>
+                            <span class="badge bg-primary rounded-pill">{{ step.step_number }}</span>
+                        </td>
+                        <td>{{ step.approver.username }}</td>
+                        <td>
+                            {% if step.status == 'pending' %}
+                            <span class="badge bg-warning text-dark" id="step-status-{{ step.id }}">Pending</span>
+                            {% elif step.status == 'approved' %}
+                            <span class="badge bg-success" id="step-status-{{ step.id }}">Approved</span>
+                            {% elif step.status == 'rejected' %}
+                            <span class="badge bg-danger" id="step-status-{{ step.id }}">Rejected</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ step.comment or '-' }}</td>
+                        <td>
+                            {% if step.status == 'pending' and step.approver_id == current_user.id and project.status == 'pending_approval' %}
+                            <div class="d-flex gap-1 align-items-start">
+                                <div class="input-group input-group-sm" style="max-width: 300px;">
+                                    <input type="text"
+                                           class="form-control"
+                                           id="comment-{{ step.id }}"
+                                           name="comment"
+                                           form="approve-form-{{ step.id }}"
+                                           placeholder="Optional comment...">
+                                </div>
+                                <form method="POST"
+                                      action="{{ url_for('project_approve', project_id=project.id, approval_id=step.id) }}"
+                                      class="d-inline"
+                                      id="approve-form-{{ step.id }}">
+                                    <input type="hidden" name="comment" value="">
+                                    <button type="submit"
+                                            class="btn btn-success btn-sm"
+                                            id="approve-btn-{{ step.id }}"
+                                            title="Approve">
+                                        <i class="bi bi-check-lg"></i> Approve
+                                    </button>
+                                </form>
+                                <form method="POST"
+                                      action="{{ url_for('project_reject', project_id=project.id, approval_id=step.id) }}"
+                                      class="d-inline"
+                                      id="reject-form-{{ step.id }}">
+                                    <input type="hidden" name="comment" value="">
+                                    <button type="submit"
+                                            class="btn btn-danger btn-sm"
+                                            id="reject-btn-{{ step.id }}"
+                                            title="Reject">
+                                        <i class="bi bi-x-lg"></i> Reject
+                                    </button>
+                                </form>
+                            </div>
+                            <script>
+                                (function() {
+                                    var commentInput = document.getElementById('comment-{{ step.id }}');
+                                    var approveForm = document.getElementById('approve-form-{{ step.id }}');
+                                    var rejectForm = document.getElementById('reject-form-{{ step.id }}');
+                                    approveForm.addEventListener('submit', function() {
+                                        approveForm.querySelector('input[name=comment]').value = commentInput.value;
+                                    });
+                                    rejectForm.addEventListener('submit', function() {
+                                        rejectForm.querySelector('input[name=comment]').value = commentInput.value;
+                                    });
+                                })();
+                            </script>
+                            {% elif step.status == 'pending' %}
+                            <span class="text-muted">Awaiting {{ step.approver.username }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

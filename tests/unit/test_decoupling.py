@@ -2,19 +2,18 @@
 
 Tests:
 - DriverProtocol — UIDriver satisfies it structurally
-- EAdminBasePage — correct inheritance chain
-- env_overrides_list — list traversal with conditions
+- WebDriverProtocol / APIDriverProtocol — new protocols exist
 - Package exports — __all__ only has generic classes
 - Metrics — prefix parameterization
+- env_overrides_list — list traversal with conditions
 """
 
 import os
-from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
 
-from sphere_e2e_test_framework.plugin.config import (
+from ankole.plugin.config import (
     _apply_env_overrides,
     _parse_field_spec,
     _check_condition,
@@ -29,16 +28,13 @@ class TestDriverProtocol:
     """Verify DriverProtocol is a valid runtime-checkable protocol."""
 
     def test_protocol_importable(self):
-        from sphere_e2e_test_framework.driver.base import DriverProtocol
+        from ankole.driver.base import DriverProtocol
         assert hasattr(DriverProtocol, '__protocol_attrs__') or hasattr(DriverProtocol, '_is_protocol')
 
     def test_uidriver_satisfies_protocol(self):
         """UIDriver should be recognized as implementing DriverProtocol."""
-        from sphere_e2e_test_framework.driver.base import DriverProtocol
-        from sphere_e2e_test_framework.driver.ui_driver import UIDriver
-        # Use isinstance with a dummy instance check — issubclass() does not
-        # work with Protocols that have non-method members (properties) in
-        # Python < 3.12.  Verify structurally instead.
+        from ankole.driver.base import DriverProtocol
+        from ankole.driver.ui_driver import UIDriver
         protocol_methods = [
             "start", "close", "click_button", "type_text", "get_text",
             "wait_for_element", "element_exists", "take_screenshot",
@@ -53,57 +49,32 @@ class TestDriverProtocol:
 
     def test_protocol_available_via_top_level(self):
         """DriverProtocol should be importable from top-level package."""
-        from sphere_e2e_test_framework import DriverProtocol
+        from ankole import DriverProtocol
         assert DriverProtocol is not None
 
 
 # ===================================================================
-# Phase 2: EAdminBasePage inheritance
+# Phase 2: New protocols exist
 # ===================================================================
 
-class TestEAdminBasePage:
-    """Verify EAdminBasePage splits E-Admin nav from generic BasePage."""
+class TestNewProtocols:
+    """Verify WebDriverProtocol and APIDriverProtocol are importable."""
 
-    def test_eadmin_base_inherits_basepage(self):
-        from sphere_e2e_test_framework.pages.base_page import BasePage
-        from sphere_e2e_test_framework.pages.e_admin.e_admin_base_page import EAdminBasePage
-        assert issubclass(EAdminBasePage, BasePage)
+    def test_web_driver_protocol_importable(self):
+        from ankole.driver.base import WebDriverProtocol
+        assert WebDriverProtocol is not None
 
-    def test_basepage_has_no_eadmin_methods(self):
-        from sphere_e2e_test_framework.pages.base_page import BasePage
-        assert not hasattr(BasePage, 'agree_and_next')
-        assert not hasattr(BasePage, 'goto_user_management')
-        assert not hasattr(BasePage, 'goto_profile_management')
-        assert not hasattr(BasePage, 'logout')
+    def test_api_driver_protocol_importable(self):
+        from ankole.driver.base import APIDriverProtocol
+        assert APIDriverProtocol is not None
 
-    def test_eadmin_base_has_eadmin_methods(self):
-        from sphere_e2e_test_framework.pages.e_admin.e_admin_base_page import EAdminBasePage
-        assert hasattr(EAdminBasePage, 'agree_and_next')
-        assert hasattr(EAdminBasePage, 'goto_user_management')
-        assert hasattr(EAdminBasePage, 'goto_profile_management')
-        assert hasattr(EAdminBasePage, 'logout')
+    def test_web_driver_importable(self):
+        from ankole.driver.web_driver import WebDriver
+        assert WebDriver is not None
 
-    def test_basepage_keeps_generic_methods(self):
-        from sphere_e2e_test_framework.pages.base_page import BasePage
-        assert hasattr(BasePage, '_step')
-        assert hasattr(BasePage, 'dismiss_ok')
-        assert hasattr(BasePage, 'dismiss_ok_with_message')
-
-    def test_all_eadmin_pages_inherit_eadmin_base(self):
-        from sphere_e2e_test_framework.pages.e_admin.e_admin_base_page import EAdminBasePage
-        from sphere_e2e_test_framework.pages.e_admin import (
-            LoginPage, DashboardPage, TermsPage, PasswordChangePage,
-            UserCreationPage, KCLoginPage, CCMKImportPage, KeyCeremonyFlow,
-            ProfileManagementPage, UserManagementPage,
-        )
-        for cls in [LoginPage, DashboardPage, TermsPage, PasswordChangePage,
-                    UserCreationPage, KCLoginPage, CCMKImportPage, KeyCeremonyFlow,
-                    ProfileManagementPage, UserManagementPage]:
-            assert issubclass(cls, EAdminBasePage), f"{cls.__name__} should inherit EAdminBasePage"
-
-    def test_eadmin_base_exported_from_package(self):
-        from sphere_e2e_test_framework.pages.e_admin import EAdminBasePage
-        assert EAdminBasePage is not None
+    def test_api_driver_importable(self):
+        from ankole.driver.api_driver import APIDriver
+        assert APIDriver is not None
 
 
 # ===================================================================
@@ -111,41 +82,27 @@ class TestEAdminBasePage:
 # ===================================================================
 
 class TestPackageExports:
-    """Verify __all__ only exposes generic core, not E-Admin pages."""
+    """Verify __all__ only exposes generic core."""
 
     def test_basepage_in_all(self):
-        import sphere_e2e_test_framework as fw
+        import ankole as fw
         assert "BasePage" in fw.__all__
 
     def test_driver_protocol_in_all(self):
-        import sphere_e2e_test_framework as fw
+        import ankole as fw
         assert "DriverProtocol" in fw.__all__
 
-    def test_eadmin_pages_not_in_all(self):
-        import sphere_e2e_test_framework as fw
-        eadmin_names = [
-            "LoginPage", "DashboardPage", "TermsPage",
-            "PasswordChangePage", "UserCreationPage", "KCLoginPage",
-            "CCMKImportPage", "KeyCeremonyFlow", "ProfileManagementPage",
-            "UserManagementPage", "EAdminBasePage",
-        ]
-        for name in eadmin_names:
-            assert name not in fw.__all__, f"{name} should not be in __all__"
-
-    def test_backward_compat_import_still_works(self):
-        """E-Admin pages should still be importable from top-level (compat)."""
-        from sphere_e2e_test_framework import LoginPage
-        assert LoginPage is not None
+    def test_new_drivers_in_all(self):
+        import ankole as fw
+        assert "WebDriver" in fw.__all__
+        assert "APIDriver" in fw.__all__
+        assert "WebDriverProtocol" in fw.__all__
+        assert "APIDriverProtocol" in fw.__all__
 
     def test_pages_init_only_exports_basepage(self):
-        from sphere_e2e_test_framework import pages
+        from ankole import pages
         assert "BasePage" in pages.__all__
         assert len(pages.__all__) == 1
-
-    def test_pages_lazy_import_compat(self):
-        """E-Admin pages should be importable from pages package (compat)."""
-        from sphere_e2e_test_framework.pages import LoginPage
-        assert LoginPage is not None
 
 
 # ===================================================================
@@ -156,14 +113,13 @@ class TestMetricsPrefix:
     """Verify MetricsPusher supports configurable metric prefix."""
 
     def test_default_prefix_is_e2e(self):
-        """New consumers without config get generic 'e2e' prefix."""
-        from sphere_e2e_test_framework.driver.grafana_push import MetricsPusher
+        from ankole.driver.grafana_push import MetricsPusher
         import inspect
         sig = inspect.signature(MetricsPusher.__init__)
         assert sig.parameters["metric_prefix"].default == "e2e"
 
     def test_default_job_name_is_e2e_tests(self):
-        from sphere_e2e_test_framework.driver.grafana_push import MetricsPusher
+        from ankole.driver.grafana_push import MetricsPusher
         import inspect
         sig = inspect.signature(MetricsPusher.__init__)
         assert sig.parameters["job_name"].default == "e2e_tests"
@@ -218,7 +174,6 @@ class TestEnvOverridesList:
     """Verify env_overrides_list mechanism end-to-end."""
 
     def test_list_override_unconditional(self):
-        """All list items should get the override applied."""
         cfg = {
             "env_overrides_list": {
                 "health_check.checks": {
@@ -239,7 +194,6 @@ class TestEnvOverridesList:
         assert cfg["health_check"]["checks"][1]["host"] == "new_host"
 
     def test_list_override_with_condition(self):
-        """Only items matching condition should get the override."""
         cfg = {
             "env_overrides_list": {
                 "health_check.checks": {
@@ -256,9 +210,7 @@ class TestEnvOverridesList:
         with patch.dict(os.environ, {"MY_PORT": "9999"}):
             _apply_env_overrides(cfg)
 
-        # ping item should NOT get port
         assert "port" not in cfg["health_check"]["checks"][0]
-        # tcp item should get port as int
         assert cfg["health_check"]["checks"][1]["port"] == 9999
 
     def test_empty_env_var_skipped(self):
@@ -273,17 +225,15 @@ class TestEnvOverridesList:
         assert cfg["items"][0]["field"] == "original"
 
     def test_missing_list_path_ignored(self):
-        """Non-existent list path should not raise."""
         cfg = {
             "env_overrides_list": {
                 "nonexistent.path": {"MY_VAR": "field"},
             },
         }
         with patch.dict(os.environ, {"MY_VAR": "value"}):
-            _apply_env_overrides(cfg)  # should not raise
+            _apply_env_overrides(cfg)
 
     def test_section_consumed(self):
-        """env_overrides_list should be popped from config."""
         cfg = {
             "env_overrides_list": {"items": {"X": "f"}},
             "items": [{"f": "old"}],

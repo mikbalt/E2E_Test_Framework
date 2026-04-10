@@ -1,0 +1,153 @@
+version: "3.9"
+
+services:
+  # ==========================================================================
+  # Application Services
+  # ==========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ankole
+      POSTGRES_PASSWORD: ankole
+      POSTGRES_DB: ankole
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sample_apps/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ankole"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  workspace-web:
+    build:
+      context: ./sample_apps/web_app
+    environment:
+      DATABASE_URL: postgresql://ankole:ankole@postgres:5432/ankole
+      FLASK_SECRET_KEY: ankole-flask-secret
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  workspace-api:
+    build:
+      context: ./sample_apps/api
+    environment:
+      DATABASE_URL: postgresql://ankole:ankole@postgres:5432/ankole
+      JWT_SECRET: ankole-jwt-secret-change-in-production
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  workspace-cli:
+    build:
+      context: ./sample_apps/cli
+    environment:
+      ANKOLE_API_URL: http://workspace-api:8000
+    depends_on:
+      workspace-api:
+        condition: service_healthy
+    profiles:
+      - cli
+
+  # ==========================================================================
+  # Observability Stack
+  # ==========================================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  pushgateway:
+    image: prom/pushgateway:latest
+    ports:
+      - "9091:9091"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./config/grafana-dashboard.json:/var/lib/grafana/dashboards/ankole.json
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki-config.yml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./config/promtail-config.yml:/etc/promtail/config.yml
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # ==========================================================================
+  # Reporting
+  # ==========================================================================
+
+  allure:
+    image: frankescobar/allure-docker-service:latest
+    ports:
+      - "5050:5050"
+    environment:
+      CHECK_RESULTS_EVERY_SECONDS: 5
+      KEEP_HISTORY: "1"
+    volumes:
+      - ./evidence/allure-results:/app/allure-results
+      - allure-reports:/app/default-reports
+    profiles:
+      - reporting
+
+  kiwi:
+    image: kiwitcms/kiwi:latest
+    ports:
+      - "8443:8443"
+    volumes:
+      - kiwi-data:/Kiwi/uploads
+    profiles:
+      - tcms
+
+volumes:
+  pgdata:
+  grafana-data:
+  allure-reports:
+  kiwi-data:

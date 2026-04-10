@@ -144,8 +144,8 @@ def fetch_tcms_cases(run_id):
 
     Returns list of dicts: [{"id": int, "summary": str, "status_id": int}]
     """
-    from sphere_e2e_test_framework.plugin import load_config
-    from sphere_e2e_test_framework.driver.kiwi_tcms import KiwiReporter
+    from ankole.plugin import load_config
+    from ankole.driver.kiwi_tcms import KiwiReporter
 
     cfg = load_config()
     tcms_config = cfg.get("kiwi_tcms", {})

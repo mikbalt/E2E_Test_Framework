@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Create Project - Ankole Framework{% endblock %}
+{% block page_header %}<strong>Create Project</strong>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="bi bi-folder-plus"></i> New Project</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('project_create') }}" id="project-form">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Project Name <span class="text-danger">*</span></label>
+                        <input type="text"
+                               class="form-control"
+                               id="name"
+                               name="name"
+                               placeholder="Enter project name"
+                               required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control"
+                                  id="description"
+                                  name="description"
+                                  rows="4"
+                                  placeholder="Describe the project..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="required_approvals" class="form-label">Required Approvals</label>
+                        <input type="number"
+                               class="form-control"
+                               id="required_approvals"
+                               name="required_approvals"
+                               value="3"
+                               min="1"
+                               max="10">
+                        <div class="form-text">Number of approval steps required (1-10).</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="submit-project-btn">
+                            <i class="bi bi-check-lg"></i> Create Project
+                        </button>
+                        <a href="{{ url_for('projects') }}" class="btn btn-secondary" id="cancel-btn">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

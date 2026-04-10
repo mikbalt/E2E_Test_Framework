@@ -12,12 +12,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sphere_e2e_test_framework.testing.conftest_utils import (
+from ankole.testing.conftest_utils import (
     get_tc_label,
     zip_app_logs,
     attach_zip_to_allure,
 )
-from sphere_e2e_test_framework.testing.conftest_factory import (
+from ankole.testing.conftest_factory import (
     make_app_config_fixture,
     make_driver_fixture,
     make_window_monitor_fixture,
@@ -157,7 +157,7 @@ class TestMakeAppConfigFixture:
 
     def test_fixture_is_pytest_fixture(self):
         """Factory output should be a pytest FixtureFunctionMarker."""
-        fixture_fn = make_app_config_fixture("e_admin")
+        fixture_fn = make_app_config_fixture("workspace")
         # repr of pytest fixtures starts with '<pytest_fixture('
         assert "pytest_fixture" in repr(fixture_fn)
 
@@ -179,7 +179,7 @@ class TestMakeDriverFixture:
         hook_calls = []
         hook = lambda cfg: hook_calls.append(cfg)
 
-        fixture_fn = make_driver_fixture("e_admin", pre_launch_hook=hook)
+        fixture_fn = make_driver_fixture("workspace", pre_launch_hook=hook)
 
         # The fixture uses request.getfixturevalue, so we'd need a real
         # pytest request to fully test. Here we verify the hook is stored.
@@ -212,7 +212,7 @@ class TestConftestHooks:
     """Verify shared TCMS dependency hooks."""
 
     def test_hooks_importable(self):
-        from sphere_e2e_test_framework.testing.conftest_hooks import (
+        from ankole.testing.conftest_hooks import (
             pytest_collection_modifyitems,
             pytest_runtest_makereport,
             pytest_runtest_setup,
@@ -222,7 +222,7 @@ class TestConftestHooks:
         assert callable(pytest_runtest_setup)
 
     def test_hooks_module_has_tracking_sets(self):
-        from sphere_e2e_test_framework.testing import conftest_hooks
+        from ankole.testing import conftest_hooks
         assert hasattr(conftest_hooks, "_passed_cases")
         assert hasattr(conftest_hooks, "_collected_cases")
         assert isinstance(conftest_hooks._passed_cases, set)

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Members - Ankole Framework{% endblock %}
+{% block page_header %}<strong>Members Management</strong>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">All Members</h5>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('member_create') }}" class="btn btn-primary" id="add-member-btn">
+        <i class="bi bi-person-plus"></i> Add Member
+    </a>
+    {% endif %}
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="members-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        {% if current_user.is_admin %}
+                        <th>Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr id="member-row-{{ user.id }}">
+                        <td>{{ user.id }}</td>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.id == current_user.id %}
+                            <span class="badge bg-info">you</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <span class="badge
+                                {% if user.role.name == 'admin' %}bg-danger
+                                {% elif user.role.name == 'approver' %}bg-warning text-dark
+                                {% else %}bg-secondary
+                                {% endif %}">
+                                {{ user.role.name }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success" id="status-{{ user.id }}">Active</span>
+                            {% else %}
+                            <span class="badge bg-danger" id="status-{{ user.id }}">Suspended</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                        {% if current_user.is_admin %}
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('member_edit', user_id=user.id) }}"
+                                   class="btn btn-outline-primary"
+                                   id="edit-member-{{ user.id }}"
+                                   title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {% if user.id != current_user.id %}
+                                    {% if user.is_active %}
+                                    <form method="POST" action="{{ url_for('member_suspend', user_id=user.id) }}" class="d-inline">
+                                        <button type="submit"
+                                                class="btn btn-outline-warning"
+                                                id="suspend-member-{{ user.id }}"
+                                                title="Suspend"
+                                                onclick="return confirm('Suspend {{ user.username }}?')">
+                                            <i class="bi bi-pause-circle"></i>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <form method="POST" action="{{ url_for('member_reactivate', user_id=user.id) }}" class="d-inline">
+                                        <button type="submit"
+                                                class="btn btn-outline-success"
+                                                id="reactivate-member-{{ user.id }}"
+                                                title="Reactivate"
+                                                onclick="return confirm('Reactivate {{ user.username }}?')">
+                                            <i class="bi bi-play-circle"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                    <form method="POST" action="{{ url_for('member_delete', user_id=user.id) }}" class="d-inline">
+                                        <button type="submit"
+                                                class="btn btn-outline-danger"
+                                                id="delete-member-{{ user.id }}"
+                                                title="Delete"
+                                                onclick="return confirm('Delete {{ user.username }}? This cannot be undone.')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if users|length == 0 %}
+<div class="text-center text-muted mt-4">
+    <i class="bi bi-people fs-1"></i>
+    <p class="mt-2">No members found.</p>
+</div>
+{% endif %}
+{% endblock %}
