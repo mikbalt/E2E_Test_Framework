@@ -66,6 +66,7 @@ class APICleanupBackend:
     ENDPOINTS = {
         "member": "/api/members/{id}",
         "project": "/api/projects/{id}",
+        "role": "/api/roles/{id}",
     }
 
     def __init__(self, api_driver: Any):
@@ -200,6 +201,45 @@ class ProjectFactory:
         return created
 
 
+class RoleFactory:
+    """Factory for generating test role data."""
+
+    def __init__(self, cleanup_tracker: CleanupTracker | None = None):
+        self._tracker = cleanup_tracker
+        self._counter = 0
+
+    def build(self, **overrides) -> dict[str, Any]:
+        """Build a role dict without creating it (in-memory only)."""
+        from faker import Faker
+
+        fake = Faker()
+        self._counter += 1
+        data = {
+            "name": f"Test Role {fake.job().title()} {self._counter}",
+            "description": fake.sentence(),
+        }
+        data.update(overrides)
+        return data
+
+    def create_via_api(self, api_driver: Any, **overrides) -> dict[str, Any]:
+        """Create a role via API and register for cleanup."""
+        payload = self.build(**overrides)
+        resp = api_driver.post("/api/roles", json=payload)
+        resp.assert_status(201)
+        created = resp.json()
+
+        if self._tracker:
+            resource_id = created.get("id")
+            self._tracker.push(
+                "role",
+                resource_id,
+                lambda rid=resource_id: api_driver.delete(f"/api/roles/{rid}"),
+            )
+
+        logger.info(f"Created role via API: {created.get('name', payload['name'])}")
+        return created
+
+
 class DataFactory:
     """Aggregates all sub-factories with shared cleanup.
 
@@ -215,6 +255,7 @@ class DataFactory:
         self.tracker = CleanupTracker()
         self.members = MemberFactory(cleanup_tracker=self.tracker)
         self.projects = ProjectFactory(cleanup_tracker=self.tracker)
+        self.roles = RoleFactory(cleanup_tracker=self.tracker)
 
     def cleanup_all(self) -> list[str]:
         """Clean up all created resources."""

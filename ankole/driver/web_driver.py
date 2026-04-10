@@ -243,6 +243,51 @@ class WebDriver:
 
     # -- Alert handling -------------------------------------------------------
 
+    # -- Row / element helpers ------------------------------------------------
+
+    def click_in_row(
+        self, table_selector: str, row_text: str, button_selector: str
+    ) -> None:
+        """Find a table row containing text and click a button within it."""
+        row = self._page.locator(f"{table_selector} tr:has-text('{row_text}')")
+        row.locator(button_selector).click()
+
+    def row_exists(self, table_selector: str, row_text: str) -> bool:
+        """Check if a table row containing text exists."""
+        return (
+            self._page.locator(
+                f"{table_selector} tr:has-text('{row_text}')"
+            ).count()
+            > 0
+        )
+
+    def get_text_in_row(
+        self, table_selector: str, row_text: str, cell_selector: str
+    ) -> str:
+        """Get text from a cell within a matching row."""
+        row = self._page.locator(f"{table_selector} tr:has-text('{row_text}')")
+        return row.locator(cell_selector).text_content() or ""
+
+    def get_all_elements_text(self, selector: str) -> list[str]:
+        """Get text content from all elements matching selector."""
+        return [el.text_content() or "" for el in self._page.locator(selector).all()]
+
+    def get_elements_data(
+        self, selector: str, sub_selectors: dict[str, str]
+    ) -> list[dict[str, str]]:
+        """For each element matching selector, extract text from sub-selectors."""
+        results = []
+        for el in self._page.locator(selector).all():
+            results.append(
+                {
+                    key: el.locator(sub_sel).text_content() or ""
+                    for key, sub_sel in sub_selectors.items()
+                }
+            )
+        return results
+
+    # -- Alert handling -------------------------------------------------------
+
     def accept_dialog(self) -> None:
         """Auto-accept the next dialog (alert/confirm/prompt)."""
         self._page.on("dialog", lambda dialog: dialog.accept())

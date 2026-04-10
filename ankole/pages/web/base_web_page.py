@@ -34,10 +34,7 @@ class BaseWebPage(BasePage):
     def get_flash_messages(self) -> list[str]:
         """Get all flash/alert messages on the page."""
         if self.driver.is_visible(".alert"):
-            return [
-                el.text_content()
-                for el in self.driver.page.locator(".alert").all()
-            ]
+            return self.driver.get_all_elements_text(".alert")
         return []
 
     def get_page_title(self) -> str:

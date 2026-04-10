@@ -38,8 +38,5 @@ class RoleManagementPage(BaseWebPage):
     def delete_role(self, name: str) -> None:
         """Delete a role by name."""
         with self._web_step(f"Delete role: {name}"):
-            row = self.driver.page.locator(
-                f"{self.ROLES_TABLE} tr:has-text('{name}')"
-            )
-            row.locator(".delete-btn").click()
+            self.driver.click_in_row(self.ROLES_TABLE, name, ".delete-btn")
         logger.info(f"Role deleted: {name}")

@@ -69,10 +69,7 @@ class MemberManagementPage(BaseWebPage):
     def delete_member(self, username: str) -> None:
         """Delete a member by clicking their delete button."""
         with self._web_step(f"Delete member: {username}"):
-            row = self.driver.page.locator(
-                f"{self.MEMBERS_TABLE} tr:has-text('{username}')"
-            )
-            row.locator(".delete-btn").click()
+            self.driver.click_in_row(self.MEMBERS_TABLE, username, ".delete-btn")
             if self.driver.is_visible(self.CONFIRM_DELETE_BTN):
                 self.driver.click(self.CONFIRM_DELETE_BTN)
         logger.info(f"Member deleted: {username}")
@@ -80,30 +77,19 @@ class MemberManagementPage(BaseWebPage):
     def suspend_member(self, username: str) -> None:
         """Suspend a member by clicking their suspend button."""
         with self._web_step(f"Suspend member: {username}"):
-            row = self.driver.page.locator(
-                f"{self.MEMBERS_TABLE} tr:has-text('{username}')"
-            )
-            row.locator(".suspend-btn").click()
+            self.driver.click_in_row(self.MEMBERS_TABLE, username, ".suspend-btn")
         logger.info(f"Member suspended: {username}")
 
     def reactivate_member(self, username: str) -> None:
         """Reactivate a suspended member."""
         with self._web_step(f"Reactivate member: {username}"):
-            row = self.driver.page.locator(
-                f"{self.MEMBERS_TABLE} tr:has-text('{username}')"
-            )
-            row.locator(".reactivate-btn").click()
+            self.driver.click_in_row(self.MEMBERS_TABLE, username, ".reactivate-btn")
         logger.info(f"Member reactivated: {username}")
 
     def is_member_in_table(self, username: str) -> bool:
         """Check if a member is visible in the table."""
-        return self.driver.page.locator(
-            f"{self.MEMBERS_TABLE} tr:has-text('{username}')"
-        ).count() > 0
+        return self.driver.row_exists(self.MEMBERS_TABLE, username)
 
     def get_member_status(self, username: str) -> str:
         """Get the status badge text for a member."""
-        row = self.driver.page.locator(
-            f"{self.MEMBERS_TABLE} tr:has-text('{username}')"
-        )
-        return row.locator(".badge").text_content() or ""
+        return self.driver.get_text_in_row(self.MEMBERS_TABLE, username, ".badge")

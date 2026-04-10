@@ -70,21 +70,18 @@ class ProjectApprovalPage(BaseWebPage):
 
     def get_approval_steps(self) -> list[dict[str, str]]:
         """Get all approval step statuses."""
-        steps = []
-        for el in self.driver.page.locator(self.APPROVAL_STEPS).all():
-            steps.append({
-                "step": el.locator(".step-number").text_content() or "",
-                "status": el.locator(".step-status").text_content() or "",
-                "approver": el.locator(".step-approver").text_content() or "",
-            })
-        return steps
+        return self.driver.get_elements_data(
+            self.APPROVAL_STEPS,
+            {
+                "step": ".step-number",
+                "status": ".step-status",
+                "approver": ".step-approver",
+            },
+        )
 
     def get_project_status(self, name: str) -> str:
         """Get the status badge for a project."""
-        row = self.driver.page.locator(
-            f"{self.PROJECTS_TABLE} tr:has-text('{name}')"
-        )
-        return row.locator(".badge").text_content() or ""
+        return self.driver.get_text_in_row(self.PROJECTS_TABLE, name, ".badge")
 
     def full_approval_workflow(
         self,
